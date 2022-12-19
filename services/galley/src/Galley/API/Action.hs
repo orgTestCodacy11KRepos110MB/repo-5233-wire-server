@@ -118,6 +118,7 @@ type family HasConversationActionEffects (tag :: ConversationActionTag) r :: Con
          LegalHoldStore,
          MemberStore,
          ProposalStore,
+         SubConversationStore,
          TeamStore,
          TinyLog,
          ConversationStore,
@@ -135,6 +136,7 @@ type family HasConversationActionEffects (tag :: ConversationActionTag) r :: Con
            Input UTCTime,
            Input Env,
            ProposalStore,
+           SubConversationStore,
            TinyLog
          ]
         r
@@ -164,6 +166,7 @@ type family HasConversationActionEffects (tag :: ConversationActionTag) r :: Con
          Input Env,
          MemberStore,
          ProposalStore,
+         SubConversationStore,
          TeamStore,
          TinyLog,
          Input UTCTime,
@@ -294,8 +297,7 @@ performAction tag origUser lconv action = do
     SConversationLeaveTag -> do
       let victims = [origUser]
       lconv' <- traverse (convDeleteMembers (toUserList lconv victims)) lconv
-      -- E.deleteMembers (tUnqualified lcnv) (toUserList lconv victims)
-      -- update in-memory view of the conversation
+      -- send remove proposals in the MLS case
       traverse_ (removeUser lconv') victims
       pure (mempty, action)
     SConversationRemoveMembersTag -> do
@@ -415,6 +417,7 @@ performConversationJoin qusr lconv (ConversationJoin invited role) = do
            Input UTCTime,
            LegalHoldStore,
            MemberStore,
+           SubConversationStore,
            ProposalStore,
            TeamStore,
            TinyLog
@@ -804,7 +807,8 @@ kickMember ::
     Member TinyLog r,
     CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    Member SubConversationStore r
   ) =>
   Qualified UserId ->
   Local Conversation ->

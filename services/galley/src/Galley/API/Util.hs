@@ -49,7 +49,6 @@ import Galley.Effects.FederatorAccess
 import Galley.Effects.GundeckAccess
 import Galley.Effects.LegalHoldStore
 import Galley.Effects.MemberStore
-import qualified Galley.Effects.MemberStore as E
 import Galley.Effects.TeamStore
 import Galley.Intra.Push
 import Galley.Options
@@ -331,12 +330,12 @@ memberJoinEvent lorig qconv t lmems rmems =
     remoteToSimple u = SimpleMember (tUntagged (rmId u)) (rmConvRoleName u)
 
 convDeleteMembers ::
-  Member MemberStore r =>
+  Members '[MemberStore] r =>
   UserList UserId ->
   Data.Conversation ->
   Sem r Data.Conversation
 convDeleteMembers ul conv = do
-  E.deleteMembers (Data.convId conv) ul
+  deleteMembers (Data.convId conv) ul
   let locals = Set.fromList (ulLocals ul)
       remotes = Set.fromList (ulRemotes ul)
   -- update in-memory view of the conversation

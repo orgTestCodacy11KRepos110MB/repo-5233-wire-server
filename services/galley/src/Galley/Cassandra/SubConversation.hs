@@ -15,7 +15,10 @@
 -- You should have received a copy of the GNU Affero General Public License along
 -- with this program. If not, see <https://www.gnu.org/licenses/>.
 
-module Galley.Cassandra.SubConversation where
+module Galley.Cassandra.SubConversation
+  ( interpretSubConversationStoreToCassandra,
+  )
+where
 
 import Cassandra
 import Data.Id
@@ -76,6 +79,16 @@ deleteGroupId :: GroupId -> Client ()
 deleteGroupId groupId =
   retry x5 $ write Cql.deleteGroupIdForSubconv (params LocalQuorum (Identity groupId))
 
+listSubConversations :: ConvId -> Client [SubConvId]
+listSubConversations cid =
+  fmap runIdentity
+    <$> retry
+      x1
+      ( query
+          Cql.selectSubConversations
+          (params LocalQuorum (Identity cid))
+      )
+
 interpretSubConversationStoreToCassandra ::
   Members '[Embed IO, Input ClientState] r =>
   Sem (SubConversationStore ': r) a ->
@@ -88,3 +101,4 @@ interpretSubConversationStoreToCassandra = interpret $ \case
   SetGroupIdForSubConversation gId cid sconv -> embedClient $ setGroupIdForSubConversation gId cid sconv
   SetSubConversationEpoch cid sconv epoch -> embedClient $ setEpochForSubConversation cid sconv epoch
   DeleteGroupIdForSubConversation groupId -> embedClient $ deleteGroupId groupId
+  ListSubConversations cid -> embedClient $ listSubConversations cid

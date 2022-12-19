@@ -35,6 +35,7 @@ import qualified Galley.Data.Conversation.Types as Data
 import Galley.Effects
 import Galley.Effects.ProposalStore
 import Galley.Env
+import Galley.Types.UserList
 import Imports
 import Polysemy
 import Polysemy.Error
@@ -99,6 +100,7 @@ removeClient ::
          Input UTCTime,
          MemberStore,
          ProposalStore,
+         SubConversationStore,
          TinyLog
        ]
       r,
@@ -111,7 +113,7 @@ removeClient ::
 removeClient lc qusr cid = do
   mMlsConv <- mkMLSConversation (tUnqualified lc)
   for_ mMlsConv $ \mlsConv -> do
-    -- FUTUREWORK: also remove the client from from subconversations of lc
+    -- TODO: also remove the client from subconversations of lc
     let cidAndKPs = maybeToList (cmLookupRef (mkClientIdentity qusr cid) (mcMembers mlsConv))
     removeClientsWithClientMap (qualifyAs lc (Conv mlsConv)) cidAndKPs qusr
 
@@ -126,6 +128,7 @@ removeUser ::
          Input UTCTime,
          MemberStore,
          ProposalStore,
+         SubConversationStore,
          TinyLog
        ]
       r,
@@ -140,3 +143,15 @@ removeUser lc qusr = do
     -- FUTUREWORK: also remove the client from from subconversations of lc
     let kprefs = toList (Map.findWithDefault mempty qusr (mcMembers mlsConv))
     removeClientsWithClientMap (qualifyAs lc (Conv mlsConv)) kprefs qusr
+
+_subConvDeleteMembers ::
+  Member SubConversationStore r =>
+  UserList UserId ->
+  ConvId ->
+  SubConvId ->
+  Sem r ()
+_subConvDeleteMembers _ _ _ = pure ()
+
+-- -- remove clients from any subconversation
+-- listSubConversations (Data.convId conv)
+--   >>= traverse_ (subConvDeleteMembers ul (Data.convId conv))

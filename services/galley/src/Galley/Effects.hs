@@ -42,6 +42,7 @@ module Galley.Effects
     ProposalStore,
     SearchVisibilityStore,
     ServiceStore,
+    SubConversationStore,
     TeamFeatureStore,
     TeamMemberStore,
     TeamNotificationStore,

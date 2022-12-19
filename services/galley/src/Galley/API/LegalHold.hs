@@ -212,6 +212,7 @@ removeSettingsInternalPaging ::
          MemberStore,
          ProposalStore,
          P.TinyLog,
+         SubConversationStore,
          TeamFeatureStore db,
          TeamMemberStore InternalPaging,
          TeamStore,
@@ -261,6 +262,7 @@ removeSettings ::
          MemberStore,
          ProposalStore,
          P.TinyLog,
+         SubConversationStore,
          TeamFeatureStore db,
          TeamMemberStore p,
          TeamStore
@@ -325,7 +327,8 @@ removeSettings' ::
          TeamMemberStore p,
          TeamStore,
          ProposalStore,
-         P.TinyLog
+         P.TinyLog,
+         SubConversationStore
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
@@ -417,6 +420,7 @@ grantConsent ::
          MemberStore,
          ProposalStore,
          P.TinyLog,
+         SubConversationStore,
          TeamStore
        ]
       r,
@@ -467,6 +471,7 @@ requestDevice ::
          MemberStore,
          ProposalStore,
          P.TinyLog,
+         SubConversationStore,
          TeamFeatureStore db,
          TeamStore
        ]
@@ -551,6 +556,7 @@ approveDevice ::
          MemberStore,
          ProposalStore,
          P.TinyLog,
+         SubConversationStore,
          TeamFeatureStore db,
          TeamStore
        ]
@@ -632,6 +638,7 @@ disableForUser ::
          MemberStore,
          ProposalStore,
          P.TinyLog,
+         SubConversationStore,
          TeamStore
        ]
       r,
@@ -689,7 +696,8 @@ changeLegalholdStatus ::
          MemberStore,
          TeamStore,
          ProposalStore,
-         P.TinyLog
+         P.TinyLog,
+         SubConversationStore
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
@@ -809,6 +817,7 @@ handleGroupConvPolicyConflicts ::
          MemberStore,
          ProposalStore,
          P.TinyLog,
+         SubConversationStore,
          TeamStore
        ]
       r,
