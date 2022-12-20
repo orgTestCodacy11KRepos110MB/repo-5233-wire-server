@@ -34,8 +34,8 @@ import Galley.API.MLS.Types
 import qualified Galley.Data.Conversation.Types as Data
 import Galley.Effects
 import Galley.Effects.ProposalStore
+import Galley.Effects.SubConversationStore
 import Galley.Env
-import Galley.Types.UserList
 import Imports
 import Polysemy
 import Polysemy.Error
@@ -63,21 +63,21 @@ removeClientsWithClientMap ::
          Input Env
        ]
       r,
-    Traversable t,
+    Foldable t,
     CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local ConvOrSubConv ->
   t KeyPackageRef ->
   Qualified UserId ->
   Sem r ()
-removeClientsWithClientMap lConvOrSubConv cs qusr = do
+removeClientsWithClientMap lConvOrSubConv kprefs qusr = do
   let meta = mlsMetaConvOrSub (tUnqualified lConvOrSubConv)
   mKeyPair <- getMLSRemovalKey
   case mKeyPair of
     Nothing -> do
       warn $ Log.msg ("No backend removal key is configured (See 'mlsPrivateKeyPaths' in galley's config). Not able to remove client from MLS conversation." :: Text)
     Just (secKey, pubKey) -> do
-      for_ cs $ \kpref -> do
+      for_ kprefs $ \kpref -> do
         let proposal = mkRemoveProposal kpref
             msg = mkSignedMessage secKey pubKey (cnvmlsGroupId meta) (cnvmlsEpoch meta) (ProposalMessage proposal)
             msgEncoded = encodeMLS' msg
@@ -113,9 +113,18 @@ removeClient ::
 removeClient lc qusr cid = do
   mMlsConv <- mkMLSConversation (tUnqualified lc)
   for_ mMlsConv $ \mlsConv -> do
-    -- TODO: also remove the client from subconversations of lc
-    let cidAndKPs = maybeToList (cmLookupRef (mkClientIdentity qusr cid) (mcMembers mlsConv))
+    let cidAndKPs = cmLookupRef (mkClientIdentity qusr cid) (mcMembers mlsConv)
     removeClientsWithClientMap (qualifyAs lc (Conv mlsConv)) cidAndKPs qusr
+
+    -- remove this client from all subconversations
+    subs <- listSubConversations (mcId mlsConv)
+    for_ subs $ \sub -> do
+      let kpmap = Map.findWithDefault mempty qusr (scMembers sub)
+      for_ (Map.lookup cid kpmap) $ \kp ->
+        removeClientsWithClientMap
+          (qualifyAs lc (SubConv mlsConv sub))
+          (Identity kp)
+          qusr
 
 -- | Send remove proposals for all clients of the user to the local conversation.
 removeUser ::
@@ -140,18 +149,23 @@ removeUser ::
 removeUser lc qusr = do
   mMlsConv <- mkMLSConversation (tUnqualified lc)
   for_ mMlsConv $ \mlsConv -> do
-    -- FUTUREWORK: also remove the client from from subconversations of lc
-    let kprefs = toList (Map.findWithDefault mempty qusr (mcMembers mlsConv))
+    let kprefs = Map.findWithDefault mempty qusr (mcMembers mlsConv)
     removeClientsWithClientMap (qualifyAs lc (Conv mlsConv)) kprefs qusr
 
-_subConvDeleteMembers ::
-  Member SubConversationStore r =>
-  UserList UserId ->
-  ConvId ->
-  SubConvId ->
-  Sem r ()
-_subConvDeleteMembers _ _ _ = pure ()
+    -- remove all clients of this user from all subconversations
+    subs <- listSubConversations (mcId mlsConv)
+    for_ subs $ \sub ->
+      for_ (Map.lookup qusr (scMembers sub)) $ \kprefs' ->
+        removeClientsWithClientMap
+          (qualifyAs lc (SubConv mlsConv sub))
+          kprefs'
+          qusr
 
--- -- remove clients from any subconversation
--- listSubConversations (Data.convId conv)
---   >>= traverse_ (subConvDeleteMembers ul (Data.convId conv))
+listSubConversations ::
+  Member SubConversationStore r =>
+  ConvId ->
+  Sem r [SubConversation]
+listSubConversations cid =
+  fmap catMaybes $
+    listSubConversationIds cid
+      >>= traverse (getSubConversation cid)

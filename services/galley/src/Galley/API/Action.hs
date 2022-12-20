@@ -303,7 +303,7 @@ performAction tag origUser lconv action = do
     SConversationRemoveMembersTag -> do
       let presentVictims = filter (isConvMemberL lconv) (toList action)
       when (null presentVictims) noChanges
-      E.deleteMembers (tUnqualified lcnv) (toUserList lconv presentVictims)
+      traverse_ (convDeleteMembers (toUserList lconv presentVictims)) lconv
       pure (mempty, action) -- FUTUREWORK: should we return the filtered action here?
     SConversationMemberUpdateTag -> do
       void $ ensureOtherMember lconv (cmuTarget action) conv

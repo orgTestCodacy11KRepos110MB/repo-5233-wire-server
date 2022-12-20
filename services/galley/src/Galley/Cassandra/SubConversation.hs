@@ -79,8 +79,8 @@ deleteGroupId :: GroupId -> Client ()
 deleteGroupId groupId =
   retry x5 $ write Cql.deleteGroupIdForSubconv (params LocalQuorum (Identity groupId))
 
-listSubConversations :: ConvId -> Client [SubConvId]
-listSubConversations cid =
+listSubConversationIds :: ConvId -> Client [SubConvId]
+listSubConversationIds cid =
   fmap runIdentity
     <$> retry
       x1
@@ -101,4 +101,4 @@ interpretSubConversationStoreToCassandra = interpret $ \case
   SetGroupIdForSubConversation gId cid sconv -> embedClient $ setGroupIdForSubConversation gId cid sconv
   SetSubConversationEpoch cid sconv epoch -> embedClient $ setEpochForSubConversation cid sconv epoch
   DeleteGroupIdForSubConversation groupId -> embedClient $ deleteGroupId groupId
-  ListSubConversations cid -> embedClient $ listSubConversations cid
+  ListSubConversationIds cid -> embedClient $ listSubConversationIds cid
