@@ -347,7 +347,7 @@ insertEpochForSubConversation :: PrepQuery W (Epoch, ConvId, SubConvId) ()
 insertEpochForSubConversation = "UPDATE subconversation set epoch = ? WHERE conv_id = ? AND subconv_id = ?"
 
 selectSubConversations :: PrepQuery R (Identity ConvId) (Identity SubConvId)
-selectSubConversations = "SELECT subconv_id FROM subconversations WHERE conv_id = ? AND epoch > 0"
+selectSubConversations = "SELECT subconv_id FROM subconversation WHERE conv_id = ?"
 
 -- Members ------------------------------------------------------------------
 

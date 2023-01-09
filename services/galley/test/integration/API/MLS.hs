@@ -220,7 +220,8 @@ tests s =
               test s "remove another client from a subconversation" testRemoveClientSubConv,
               test s "send an application message in a subconversation" testSendMessageSubConv,
               test s "reset a subconversation" testDeleteSubConv,
-              test s "fail to reset a subconversation with wrong epoch" testDeleteSubConvStale
+              test s "fail to reset a subconversation with wrong epoch" testDeleteSubConvStale,
+              test s "remove user from main conversation" testRemoveUserMain
             ],
           testGroup
             "Local Sender/Remote Subconversation"
@@ -2570,3 +2571,36 @@ testDeleteSubConvStale = do
   let dsc = DeleteSubConversation (pscGroupId sub) (pscEpoch sub)
   deleteSubConv (qUnqualified alice) qcnv sconv dsc
     !!! do const 409 === statusCode
+
+testRemoveUserMain :: TestM ()
+testRemoveUserMain = do
+  [alice, bob, charlie] <- createAndConnectUsers [Nothing, Nothing, Nothing]
+
+  runMLSTest $
+    do
+      [alice1, bob1, bob2, charlie1, charlie2] <-
+        traverse
+          createMLSClient
+          [alice, bob, bob, charlie, charlie]
+      traverse_ uploadNewKeyPackage [bob1, bob2, charlie1, charlie2]
+      (_, qcnv) <- setupMLSGroup alice1
+      void $ createAddCommit alice1 [bob, charlie] >>= sendAndConsumeCommit
+
+      let subname = "conference"
+      createSubConv qcnv bob1 subname
+      let qcs = convsub qcnv (Just subname)
+
+      -- all clients join
+      for_ [alice1, bob2, charlie1, charlie2] $ \c ->
+        void $ createExternalCommit c Nothing qcs >>= sendAndConsumeCommitBundle
+
+      -- bob leaves the main conversation
+      liftTest $ do
+        deleteMemberQualified (qUnqualified bob) bob qcnv
+          !!! const 200 === statusCode
+
+        sub :: PublicSubConversation <-
+          responseJsonError
+            =<< getSubConv (qUnqualified alice) qcnv (SubConvId "conference")
+              <!! const 200 === statusCode
+        print sub
