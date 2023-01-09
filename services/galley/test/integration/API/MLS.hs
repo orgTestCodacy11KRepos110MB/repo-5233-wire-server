@@ -2594,13 +2594,37 @@ testRemoveUserMain = do
       for_ [alice1, bob2, charlie1, charlie2] $ \c ->
         void $ createExternalCommit c Nothing qcs >>= sendAndConsumeCommitBundle
 
-      -- bob leaves the main conversation
-      liftTest $ do
-        deleteMemberQualified (qUnqualified bob) bob qcnv
-          !!! const 200 === statusCode
+      -- TODO(elland): creator is not mapped correctly inside a subconversation
+      -- so removing them has issues
+      [(_, kpref1), (_, kpref2)] <- getClientsFromGroupState alice1 charlie
 
-        sub :: PublicSubConversation <-
-          responseJsonError
-            =<< getSubConv (qUnqualified alice) qcnv (SubConvId "conference")
-              <!! const 200 === statusCode
-        print sub
+      -- bob leaves the main conversation
+      mlsBracket [alice1, bob1, bob2] $ \wss -> do
+        liftTest $ do
+          deleteMemberQualified (qUnqualified charlie) charlie qcnv
+            !!! const 200 === statusCode
+
+        -- Remove charlie from our state as well
+        State.modify $ \mls ->
+          mls
+            { mlsMembers = Set.difference (mlsMembers mls) (Set.fromList [charlie1, charlie2])
+            }
+
+        msg1 <- WS.assertMatchN (5 # Second) wss $ \n ->
+          wsAssertBackendRemoveProposal charlie qcnv kpref1 n
+
+        traverse_ (uncurry consumeMessage1) (zip [alice1, bob1, bob2] msg1)
+
+        msg2 <- WS.assertMatchN (5 # Second) wss $ \n ->
+          wsAssertBackendRemoveProposal charlie qcnv kpref2 n
+
+        traverse_ (uncurry consumeMessage1) (zip [alice1, bob1, bob2] msg2)
+
+        void $ createPendingProposalCommit alice1 >>= sendAndConsumeCommitBundle
+
+        liftTest $ do
+          sub :: PublicSubConversation <-
+            responseJsonError
+              =<< getSubConv (qUnqualified charlie) qcnv (SubConvId "conference")
+                <!! const 200 === statusCode
+          print $ pscMembers sub

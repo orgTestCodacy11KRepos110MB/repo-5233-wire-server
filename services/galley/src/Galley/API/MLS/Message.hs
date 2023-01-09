@@ -632,6 +632,7 @@ data ProposalAction = ProposalAction
     -- to know if a commit has one when processing external commits
     paExternalInit :: Any
   }
+  deriving Show
 
 instance Semigroup ProposalAction where
   ProposalAction add1 rem1 init1 <> ProposalAction add2 rem2 init2 =
