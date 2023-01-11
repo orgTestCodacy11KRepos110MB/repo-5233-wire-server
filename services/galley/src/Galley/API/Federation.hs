@@ -57,7 +57,6 @@ import qualified Galley.Effects.BrigAccess as E
 import qualified Galley.Effects.ConversationStore as E
 import qualified Galley.Effects.FireAndForget as E
 import qualified Galley.Effects.MemberStore as E
-import Galley.Effects.ProposalStore (ProposalStore)
 import Galley.Effects.SubConversationStore
 import Galley.Effects.SubConversationSupply
 import Galley.Options

@@ -39,6 +39,7 @@ module Galley.Effects
     CustomBackendStore,
     LegalHoldStore,
     MemberStore,
+    ProposalStore,
     SearchVisibilityStore,
     ServiceStore,
     TeamFeatureStore,
