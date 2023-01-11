@@ -128,6 +128,11 @@ type GalleyApi =
            EmptyResponse
     :<|> FedEndpoint "on-typing-indicator-updated" TypingDataUpdateRequest EmptyResponse
     :<|> FedEndpoint "get-sub-conversation" GetSubConversationsRequest GetSubConversationsResponse
+    :<|> FedEndpointWithMods
+           '[MakesFederatedCall 'Galley "on-mls-message-sent"]
+           "leave-sub-conversation"
+           LeaveSubConversationRequest
+           LeaveSubConversationResponse
     :<|> FedEndpoint "delete-sub-conversation" DeleteSubConversationRequest DeleteSubConversationResponse
 
 data TypingDataUpdateRequest = TypingDataUpdateRequest
@@ -435,6 +440,23 @@ data GetSubConversationsResponse
   | GetSubConversationsResponseSuccess PublicSubConversation
   deriving stock (Eq, Show, Generic)
   deriving (ToJSON, FromJSON) via (CustomEncoded GetSubConversationsResponse)
+
+data LeaveSubConversationRequest = LeaveSubConversationRequest
+  { lscrUser :: UserId,
+    lscrClient :: ClientId,
+    lscrConv :: ConvId,
+    lscrSubConv :: SubConvId
+  }
+  deriving stock (Eq, Show, Generic)
+  deriving (Arbitrary) via (GenericUniform LeaveSubConversationRequest)
+  deriving (ToJSON, FromJSON) via (CustomEncoded LeaveSubConversationRequest)
+
+data LeaveSubConversationResponse
+  = LeaveSubConversationResponseError GalleyError
+  | LeaveSubConversationResponseProtocolError Text
+  | LeaveSubConversationResponseOk
+  deriving stock (Eq, Show, Generic)
+  deriving (ToJSON, FromJSON) via (CustomEncoded LeaveSubConversationResponse)
 
 data DeleteSubConversationRequest = DeleteSubConversationRequest
   { dscreqUser :: UserId,
