@@ -2623,8 +2623,15 @@ testRemoveUserMain = do
         void $ createPendingProposalCommit alice1 >>= sendAndConsumeCommitBundle
 
         liftTest $ do
+          getSubConv (qUnqualified charlie) qcnv (SubConvId "conference")
+            !!! const 403 === statusCode
+
           sub :: PublicSubConversation <-
             responseJsonError
-              =<< getSubConv (qUnqualified charlie) qcnv (SubConvId "conference")
+              =<< getSubConv (qUnqualified bob) qcnv (SubConvId "conference")
                 <!! const 200 === statusCode
-          print $ pscMembers sub
+          liftIO $
+            assertEqual
+              "subconv membership mismatch after removal"
+              (sort [bob1, bob2, alice1])
+              (sort $ pscMembers sub)
