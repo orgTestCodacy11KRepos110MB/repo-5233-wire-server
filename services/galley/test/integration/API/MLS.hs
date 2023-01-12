@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
+{-# OPTIONS_GHC -Wno-incomplete-uni-patterns -Wno-unused-matches #-}
 
 -- This file is part of the Wire Server implementation.
 --
@@ -221,7 +221,8 @@ tests s =
               test s "send an application message in a subconversation" testSendMessageSubConv,
               test s "reset a subconversation" testDeleteSubConv,
               test s "fail to reset a subconversation with wrong epoch" testDeleteSubConvStale,
-              test s "remove user from main conversation" testRemoveUserMain
+              test s "remove user from parent conversation" testRemoveUserParent,
+              test s "remove creator from parent conversation" testRemoveCreatorParent
             ],
           testGroup
             "Local Sender/Remote Subconversation"
@@ -2578,8 +2579,8 @@ testDeleteSubConvStale = do
   deleteSubConv (qUnqualified alice) qcnv sconv dsc
     !!! do const 409 === statusCode
 
-testRemoveUserMain :: TestM ()
-testRemoveUserMain = do
+testRemoveUserParent :: TestM ()
+testRemoveUserParent = do
   [alice, bob, charlie] <- createAndConnectUsers [Nothing, Nothing, Nothing]
 
   runMLSTest $
@@ -2600,11 +2601,9 @@ testRemoveUserMain = do
       for_ [alice1, bob2, charlie1, charlie2] $ \c ->
         void $ createExternalCommit c Nothing qcs >>= sendAndConsumeCommitBundle
 
-      -- TODO(elland): creator is not mapped correctly inside a subconversation
-      -- so removing them has issues
       [(_, kpref1), (_, kpref2)] <- getClientsFromGroupState alice1 charlie
 
-      -- bob leaves the main conversation
+      -- charlie leaves the main conversation
       mlsBracket [alice1, bob1, bob2] $ \wss -> do
         liftTest $ do
           deleteMemberQualified (qUnqualified charlie) charlie qcnv
@@ -2641,3 +2640,72 @@ testRemoveUserMain = do
               "subconv membership mismatch after removal"
               (sort [bob1, bob2, alice1])
               (sort $ pscMembers sub)
+
+testRemoveCreatorParent :: TestM ()
+testRemoveCreatorParent = do
+  [alice, bob, charlie] <- createAndConnectUsers [Nothing, Nothing, Nothing]
+
+  runMLSTest $
+    do
+      [alice1, bob1, bob2, charlie1, charlie2] <-
+        traverse
+          createMLSClient
+          [alice, bob, bob, charlie, charlie]
+      traverse_ uploadNewKeyPackage [bob1, bob2, charlie1, charlie2]
+      (_, qcnv) <- setupMLSGroup alice1
+      void $ createAddCommit alice1 [bob, charlie] >>= sendAndConsumeCommit
+
+      let subname = "conference"
+      createSubConv qcnv alice1 subname
+      let qcs = convsub qcnv (Just subname)
+
+      -- all clients join
+      for_ [bob1, bob2, charlie1, charlie2] $ \c ->
+        void $ createExternalCommit c Nothing qcs >>= sendAndConsumeCommitBundle
+
+      [(_, kpref1)] <- getClientsFromGroupState alice1 alice
+
+      -- creator leaves the main conversation
+      mlsBracket [bob1, bob2, charlie1, charlie2] $ \wss -> do
+        liftTest $ do
+          deleteMemberQualified (qUnqualified alice) alice qcnv
+            !!! const 200 === statusCode
+
+        -- Remove charlie from our state as well
+        State.modify $ \mls ->
+          mls
+            { mlsMembers = Set.difference (mlsMembers mls) (Set.fromList [alice1])
+            }
+
+        msg <- WS.assertMatchN (5 # Second) wss $ \n ->
+          wsAssertBackendRemoveProposal alice qcnv kpref1 n
+
+        traverse_ (uncurry consumeMessage1) (zip [bob1, bob2, charlie1, charlie2] msg)
+
+        void $ createPendingProposalCommit bob1 >>= sendAndConsumeCommitBundle
+
+        liftTest $ do
+          getSubConv (qUnqualified alice) qcnv (SubConvId "conference")
+            !!! const 403 === statusCode
+
+          -- charlie sees updated memberlist
+          sub :: PublicSubConversation <-
+            responseJsonError
+              =<< getSubConv (qUnqualified charlie) qcnv (SubConvId "conference")
+                <!! const 200 === statusCode
+          liftIO $
+            assertEqual
+              "subconv membership mismatch after removal"
+              (sort [charlie1, charlie2, bob1, bob2])
+              (sort $ pscMembers sub)
+
+          -- bob also sees updated memberlist
+          sub1 :: PublicSubConversation <-
+            responseJsonError
+              =<< getSubConv (qUnqualified bob) qcnv (SubConvId "conference")
+                <!! const 200 === statusCode
+          liftIO $
+            assertEqual
+              "subconv membership mismatch after removal"
+              (sort [charlie1, charlie2, bob1, bob2])
+              (sort $ pscMembers sub1)
