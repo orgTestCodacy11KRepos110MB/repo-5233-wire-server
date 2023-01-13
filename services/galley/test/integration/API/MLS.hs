@@ -2409,7 +2409,7 @@ testSendMessageSubConv = do
     (_, qcnv) <- setupMLSGroup alice1
     void $ createAddCommit alice1 [bob] >>= sendAndConsumeCommit
 
-    qcs <- createSubConv qcnv bob1 "conference"
+    qcs <- createSubConv qcnv bob1 (SubConvId "conference")
 
     void $ createExternalCommit alice1 Nothing qcs >>= sendAndConsumeCommitBundle
     void $ createExternalCommit bob2 Nothing qcs >>= sendAndConsumeCommitBundle
@@ -2697,7 +2697,7 @@ testLeaveSubConv = do
     void $ createAddCommit alice1 [bob] >>= sendAndConsumeCommit
 
     let subId = SubConvId "conference"
-    qsub <- createSubConv qcnv bob1 "conference" -- TODO: use subId here
+    qsub <- createSubConv qcnv bob1 subId
     void $ createExternalCommit alice1 Nothing qsub >>= sendAndConsumeCommitBundle
     void $ createExternalCommit bob2 Nothing qsub >>= sendAndConsumeCommitBundle
 
