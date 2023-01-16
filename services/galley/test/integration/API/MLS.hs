@@ -230,7 +230,8 @@ tests s =
               test s "get subconversation of remote conversation - not member" (testGetRemoteSubConv False),
               test s "join remote subconversation" testJoinRemoteSubConv,
               test s "reset a subconversation - member" (testDeleteRemoteSubConv True),
-              test s "reset a subconversation - not member" (testDeleteRemoteSubConv False)
+              test s "reset a subconversation - not member" (testDeleteRemoteSubConv False),
+              test s "leave a remote subconversation" testLeaveRemoteSubConv
             ],
           testGroup
             "Remote Sender/Local SubConversation"
@@ -2601,7 +2602,7 @@ testDeleteSubConv isAMember = do
   qcnv <- runMLSTest $ do
     alice1 <- createMLSClient alice
     (_, qcnv) <- setupMLSGroup alice1
-    void $ createSubConv qcnv alice1 (unSubConvId sconv)
+    void $ createSubConv qcnv alice1 sconv
     pure qcnv
 
   sub <-
@@ -2754,3 +2755,20 @@ testLeaveSubConvNonMember = do
           =<< leaveSubConv (ciUser alice1) (ciClient alice1) qcnv (SubConvId "foo")
             <!! const 404 === statusCode
       liftIO $ Wai.label e @?= "no-conversation"
+
+testLeaveRemoteSubConv :: TestM ()
+testLeaveRemoteSubConv = do
+  -- setup fake remote conversation
+  let domain = "faraway.example.com"
+  [alice, bob] <- createAndConnectUsers [Just domain, Nothing]
+  runMLSTest $ do
+    [alice1, bob1] <- traverse createMLSClient [alice, bob]
+    void $ uploadNewKeyPackage bob1
+    (_groupId, _qcnv) <- setupFakeMLSGroup alice1
+    mp <- createAddCommit alice1 [bob]
+    traverse_ consumeWelcome (mpWelcome mp)
+
+    -- setup subconversation
+    let _subId = SubConvId "conference"
+    -- _qsub <- createSubConv qcnv alice1 subId
+    pure ()
