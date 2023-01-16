@@ -2763,12 +2763,20 @@ testLeaveRemoteSubConv = do
   [alice, bob] <- createAndConnectUsers [Just domain, Nothing]
   runMLSTest $ do
     [alice1, bob1] <- traverse createMLSClient [alice, bob]
-    void $ uploadNewKeyPackage bob1
-    (_groupId, _qcnv) <- setupFakeMLSGroup alice1
-    mp <- createAddCommit alice1 [bob]
-    traverse_ consumeWelcome (mpWelcome mp)
+    -- void $ uploadNewKeyPackage bob1
+    -- (_groupId, _qcnv) <- setupFakeMLSGroup alice1
+    -- mp <- createAddCommit alice1 [bob]
+    -- traverse_ consumeWelcome (mpWelcome mp)
 
-    -- setup subconversation
-    let _subId = SubConvId "conference"
-    -- _qsub <- createSubConv qcnv alice1 subId
-    pure ()
+    -- setup fake subconversation
+    let subId = SubConvId "conference"
+    (_subGroupId, qcnv) <- setupFakeMLSGroup alice1
+    let qsub = fmap (flip SubConv subId) qcnv
+
+    let mock req = case frRPC req of
+          "query-group-info"
+          rpc -> assertFailure $ "unmocked RPC called: " <> T.unpack rpc
+    (_, reqs) <-
+      withTempMockFederator' mock $
+        createExternalCommit bob1 Nothing qsub >>= sendAndConsumeCommitBundle
+    print reqs
