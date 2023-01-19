@@ -147,6 +147,7 @@ mlsAPI =
         :<|> Named @"put-key-package-ref" (putKeyPackageRef ref)
         :<|> Named @"post-key-package-ref" (postKeyPackageRef ref)
   )
+    :<|> Named @"delete-key-package-refs" deleteKeyPackageRefs
     :<|> getMLSClients
     :<|> mapKeyPackageRefsInternal
     :<|> Named @"put-key-package-add" upsertKeyPackage
@@ -245,6 +246,10 @@ upsertKeyPackage nkp = do
     noteH :: Text -> Maybe a -> Handler r a
     noteH errMsg Nothing = mlsProtocolError errMsg
     noteH _ (Just y) = pure y
+
+deleteKeyPackageRefs :: DeleteKeyPackageRefsRequest -> Handler r ()
+deleteKeyPackageRefs (DeleteKeyPackageRefsRequest refs) =
+  lift . wrapClient $ pooledForConcurrentlyN_ 16 refs Data.deleteKeyPackageRef
 
 getMLSClients :: UserId -> SignatureSchemeTag -> Handler r (Set ClientInfo)
 getMLSClients usr _ss = do
