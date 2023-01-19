@@ -71,7 +71,7 @@ import Brig.User.Phone
 import qualified Cassandra as C
 import qualified Cassandra as Data
 import Control.Error hiding (bool)
-import Control.Lens (over, view, (.~), (<>~), (?~), (^.))
+import Control.Lens (view, (%~), (.~), (<>~), (?~), (^.))
 import Control.Monad.Catch (throwM)
 import Data.Aeson hiding (json)
 import Data.Bifunctor
@@ -184,7 +184,7 @@ internalEndpointsSwaggerDocsAPI =
       & cleanupSwagger
   where
     prependTitle :: Text -> S.Swagger -> S.Swagger
-    prependTitle tagName s = over (S.paths . InsOrdHashMap.unorderedTraversal) (prependTitle' tagName) s
+    prependTitle tagName s = s & (S.paths . InsOrdHashMap.unorderedTraversal) %~ prependTitle' tagName
 
     prependTitle' :: Text -> S.PathItem -> S.PathItem
     prependTitle' tagName it =
