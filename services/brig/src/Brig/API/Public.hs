@@ -114,7 +114,9 @@ import qualified Wire.API.Error.Brig as E
 import Wire.API.Federation.API
 import qualified Wire.API.Properties as Public
 import qualified Wire.API.Routes.Internal.Brig as BrigInternalAPI
-import Wire.API.Routes.Internal.Cannon as CannonInternalAPI
+import qualified Wire.API.Routes.Internal.Cannon as CannonInternalAPI
+import qualified Wire.API.Routes.Internal.Cargohold as CargoholdInternalAPI
+import qualified Wire.API.Routes.Internal.LegalHold as LegalHoldInternalAPI
 import qualified Wire.API.Routes.MultiTablePaging as Public
 import Wire.API.Routes.Named (Named (Named))
 import Wire.API.Routes.Public.Brig
@@ -176,6 +178,8 @@ internalEndpointsSwaggerDocsAPI =
   swaggerSchemaUIServer $
     ( BrigInternalAPI.swaggerDoc
         <> CannonInternalAPI.swaggerDoc
+        <> CargoholdInternalAPI.swaggerDoc
+        <> LegalHoldInternalAPI.swaggerDoc
     )
       & S.info . S.title .~ "Wire-Server internal API"
       & S.info . S.description ?~ $(embedText =<< makeRelativeToProject "docs/swagger-internal-endpoints.md")
