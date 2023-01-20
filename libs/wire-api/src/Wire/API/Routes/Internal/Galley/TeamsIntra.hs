@@ -23,7 +23,7 @@
 -- You should have received a copy of the GNU Affero General Public License along
 -- with this program. If not, see <https://www.gnu.org/licenses/>.
 
-module Galley.Types.Teams.Intra
+module Wire.API.Routes.Internal.Galley.TeamsIntra
   ( TeamStatus (..),
     TeamData (..),
     TeamStatusUpdate (..),

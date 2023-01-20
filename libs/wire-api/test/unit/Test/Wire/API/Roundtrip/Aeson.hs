@@ -47,6 +47,8 @@ import qualified Wire.API.Provider.Service as Provider.Service
 import qualified Wire.API.Provider.Service.Tag as Provider.Service.Tag
 import qualified Wire.API.Push.Token as Push.Token
 -- import qualified Wire.API.RawJson as RawJson
+
+import qualified Wire.API.Routes.Internal.Galley.TeamsIntra as TeamsIntra
 import qualified Wire.API.Team as Team
 import qualified Wire.API.Team.Conversation as Team.Conversation
 import qualified Wire.API.Team.Feature as Team.Feature
@@ -311,7 +313,8 @@ tests =
       testRoundTrip @User.Search.PagingState,
       testRoundTrip @User.Search.TeamContact,
       testRoundTrip @(Wrapped.Wrapped "some_int" Int),
-      testRoundTrip @Conversation.Action.SomeConversationAction
+      testRoundTrip @Conversation.Action.SomeConversationAction,
+      testRoundTrip @TeamsIntra.GuardLegalholdPolicyConflicts
     ]
 
 testRoundTrip ::

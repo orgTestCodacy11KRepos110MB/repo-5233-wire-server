@@ -32,7 +32,6 @@ import Data.Misc (Milliseconds)
 import Data.Range
 import qualified Data.Set as Set
 import qualified Data.Text.Encoding as T
-import qualified Galley.Types.Teams.Intra as Team
 import Imports
 import qualified Network.Wai.Utilities.Error as Error
 import Test.Tasty.HUnit
@@ -41,6 +40,7 @@ import Web.Cookie (parseSetCookie, setCookieName)
 import Wire.API.Conversation
 import Wire.API.Conversation.Protocol
 import Wire.API.Conversation.Role
+import qualified Wire.API.Routes.Internal.Galley.TeamsIntra as Team
 import Wire.API.Team hiding (newTeam)
 import Wire.API.Team.Feature (FeatureStatus (..))
 import qualified Wire.API.Team.Feature as Public

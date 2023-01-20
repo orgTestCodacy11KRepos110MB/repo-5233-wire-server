@@ -67,7 +67,6 @@ import Federator.Discovery (DiscoveryFailure (..))
 import Federator.MockServer (FederatedRequest (..), MockException (..))
 import Galley.API.Mapping
 import Galley.Options (optFederator)
-import Galley.Types.Conversations.Intra
 import Galley.Types.Conversations.Members
 import Imports
 import qualified Network.HTTP.Types as HTTP
@@ -96,6 +95,7 @@ import qualified Wire.API.Federation.API.Galley as F
 import Wire.API.Internal.Notification
 import Wire.API.Message
 import qualified Wire.API.Message as Message
+import Wire.API.Routes.Internal.Galley.ConversationsIntra
 import Wire.API.Routes.MultiTablePaging
 import Wire.API.Routes.Named
 import qualified Wire.API.Team.Feature as Public

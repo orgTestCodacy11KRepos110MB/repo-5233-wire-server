@@ -144,7 +144,7 @@ import Wire.Arbitrary (Arbitrary, GenericUniform (..))
 -- 'FeatureStatusPut' (optional) and by by user: 'FeatureConfigGet'. Then
 -- implement them in Galley.API.Public.
 --
--- 7. Add internal routes in Galley.API.Internal
+-- 7. Add internal routes in Wire.API.Routes.Internal.Galley
 --
 -- 8. If the feature should be configurable via Stern add routes to Stern.API.
 -- Manually check that the swagger looks okay.
