@@ -1,11 +1,14 @@
 module Wire.API.Routes.Internal.Galley where
 
+import Control.Lens ((.~))
 import Data.Id as Id
 import Data.Range
+import Data.Swagger (Swagger, info, title)
 import GHC.TypeLits (AppendSymbol)
 import Imports hiding (head)
 import Servant hiding (JSON, WithStatus)
 import qualified Servant hiding (WithStatus)
+import Servant.Swagger
 import Wire.API.ApplyMods
 import Wire.API.Conversation.Role
 import Wire.API.Error
@@ -20,6 +23,7 @@ import Wire.API.Routes.Named
 import Wire.API.Routes.Public
 import Wire.API.Routes.Public.Galley.Conversation
 import Wire.API.Routes.Public.Galley.Feature
+import Wire.API.SwaggerServant
 import Wire.API.Team
 import Wire.API.Team.Feature
 import Wire.API.Team.Member
@@ -48,7 +52,7 @@ type LegalHoldFeaturesStatusChangeFederatedCalls =
      MakesFederatedCall 'Galley "on-new-remote-conversation"
    ]
 
-type InternalAPI = "i" :> InternalAPIBase
+type InternalAPI = SwaggerTag "galley" :> "i" :> InternalAPIBase
 
 type InternalAPIBase =
   Named
@@ -379,3 +383,8 @@ type IFeatureNoConfigMultiGet f =
   Named
     '("igetmulti", f)
     (FeatureNoConfigMultiGetBase f)
+
+swaggerDoc :: Swagger
+swaggerDoc =
+  toSwagger (Proxy @InternalAPI)
+    & info . title .~ "Wire-Server internal cannon API"

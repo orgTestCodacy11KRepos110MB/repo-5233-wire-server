@@ -11,6 +11,7 @@ import Data.Aeson.Types (FromJSON, ToJSON)
 import Data.Id (ConvId, UserId)
 import Data.Qualified
 import Data.Schema
+import qualified Data.Swagger as Swagger
 import Imports
 
 data DesiredMembership = Included | Excluded
@@ -45,7 +46,7 @@ data UpsertOne2OneConversationRequest = UpsertOne2OneConversationRequest
     uooConvId :: Maybe (Qualified ConvId)
   }
   deriving (Show, Generic)
-  deriving (FromJSON, ToJSON) via Schema UpsertOne2OneConversationRequest
+  deriving (FromJSON, ToJSON, Swagger.ToSchema) via Schema UpsertOne2OneConversationRequest
 
 instance ToSchema UpsertOne2OneConversationRequest where
   schema =
@@ -61,7 +62,7 @@ newtype UpsertOne2OneConversationResponse = UpsertOne2OneConversationResponse
   { uuorConvId :: Qualified ConvId
   }
   deriving (Show, Generic)
-  deriving (FromJSON, ToJSON) via Schema UpsertOne2OneConversationResponse
+  deriving (FromJSON, ToJSON, Swagger.ToSchema) via Schema UpsertOne2OneConversationResponse
 
 instance ToSchema UpsertOne2OneConversationResponse where
   schema =

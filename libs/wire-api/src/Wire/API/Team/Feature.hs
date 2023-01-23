@@ -507,6 +507,9 @@ instance ToSchema LockStatus where
           element "unlocked" LockStatusUnlocked
         ]
 
+-- TODO: Check if this generic instantiation is/looks good
+instance S.ToParamSchema LockStatus
+
 instance ToByteString LockStatus where
   builder LockStatusLocked = "locked"
   builder LockStatusUnlocked = "unlocked"
@@ -778,6 +781,7 @@ instance FeatureTrivialConfig SndFactorPasswordChallengeConfig where
 data SearchVisibilityInboundConfig = SearchVisibilityInboundConfig
   deriving stock (Eq, Show, Generic)
   deriving (Arbitrary) via (GenericUniform SearchVisibilityInboundConfig)
+  deriving (S.ToSchema) via Schema SearchVisibilityInboundConfig
 
 instance IsFeatureConfig SearchVisibilityInboundConfig where
   type FeatureSymbol SearchVisibilityInboundConfig = "searchVisibilityInbound"

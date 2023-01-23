@@ -61,6 +61,7 @@ import qualified Data.ByteString.Base64.URL as B64U
 import qualified Data.ByteString.Builder as BB
 import qualified Data.ByteString.Conversion as BS
 import qualified Data.ByteString.Lazy as L
+import qualified Data.Currency as Currency
 import Data.Fixed
 import Data.Schema
 import Data.String.Conversions (cs)
@@ -68,7 +69,6 @@ import qualified Data.Swagger as S
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import qualified Data.Text.Encoding.Error as Text
--- for UTCTime
 import Data.Time.Clock
 import Data.Time.Format (formatTime, parseTimeM)
 import qualified Data.Time.Lens as TL
@@ -270,3 +270,12 @@ fromBase64Text = B64.decode . Text.encodeUtf8
 
 toBase64Text :: ByteString -> Text
 toBase64Text = Text.decodeUtf8 . B64.encode
+
+-- TODO: Find a better module for this
+instance ToSchema Currency.Alpha where
+  schema = mkSchema docs parseJSON (pure . toJSON)
+    where
+      docs =
+        swaggerDoc @Text
+          & S.schema . S.description ?~ "ISO 4217 alphabetic codes"
+          & S.schema . S.example ?~ "EUR"
