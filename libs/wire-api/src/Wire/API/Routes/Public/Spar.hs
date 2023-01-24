@@ -34,9 +34,9 @@ import Web.Scim.Class.Auth as Scim.Auth
 import Web.Scim.Class.User as Scim.User
 import Wire.API.Error
 import Wire.API.Error.Brig
+import Wire.API.Routes.Internal.Spar
 import Wire.API.Routes.Public
 import Wire.API.SwaggerServant
-import Wire.API.User (ScimUserInfos, UserSet)
 import Wire.API.User.IdentityProvider
 import Wire.API.User.Saml
 import Wire.API.User.Scim
@@ -50,7 +50,7 @@ type API =
   "sso" :> APISSO
     :<|> "identity-providers" :> APIIDP
     :<|> "scim" :> APIScim
-    :<|> OmitDocs :> "i" :> APIINTERNAL
+    :<|> OmitDocs :> APIINTERNAL
 
 type APISSO =
   "metadata" :> SAML.APIMeta
@@ -126,12 +126,6 @@ type IdpDelete =
 
 type SsoSettingsGet =
   Get '[JSON] SsoSettings
-
-type APIINTERNAL =
-  "status" :> Get '[JSON] NoContent
-    :<|> "teams" :> Capture "team" TeamId :> DeleteNoContent
-    :<|> "sso" :> "settings" :> ReqBody '[JSON] SsoSettings :> Put '[JSON] NoContent
-    :<|> "scim" :> "userinfos" :> ReqBody '[JSON] UserSet :> Post '[JSON] ScimUserInfos
 
 sparSPIssuer :: (Functor m, SAML.HasConfig m) => Maybe TeamId -> m SAML.Issuer
 sparSPIssuer Nothing =
