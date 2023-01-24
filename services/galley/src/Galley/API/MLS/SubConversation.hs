@@ -41,7 +41,6 @@ import Galley.Data.Conversation.Types
 import Galley.Effects
 import Galley.Effects.FederatorAccess
 import qualified Galley.Effects.MemberStore as Eff
-import Galley.Effects.SubConversationStore (SubConversationStore)
 import qualified Galley.Effects.SubConversationStore as Eff
 import Galley.Effects.SubConversationSupply (SubConversationSupply)
 import qualified Galley.Effects.SubConversationSupply as Eff
@@ -238,7 +237,7 @@ deleteSubConversation ::
   Local UserId ->
   Qualified ConvId ->
   SubConvId ->
-  DeleteSubConversation ->
+  DeleteSubConversationRequest ->
   Sem r ()
 deleteSubConversation lusr qconv sconv dsc =
   foldQualified
@@ -264,7 +263,7 @@ deleteLocalSubConversation ::
   Qualified UserId ->
   Local ConvId ->
   SubConvId ->
-  DeleteSubConversation ->
+  DeleteSubConversationRequest ->
   Sem r ()
 deleteLocalSubConversation qusr lcnvId scnvId dsc = do
   assertMLSEnabled
@@ -304,12 +303,12 @@ deleteRemoteSubConversation ::
   Local UserId ->
   Remote ConvId ->
   SubConvId ->
-  DeleteSubConversation ->
+  DeleteSubConversationRequest ->
   Sem r ()
 deleteRemoteSubConversation lusr rcnvId scnvId dsc = do
   assertMLSEnabled
   let deleteRequest =
-        DeleteSubConversationRequest
+         DeleteSubConversationFedRequest
           { dscreqUser = tUnqualified lusr,
             dscreqConv = tUnqualified rcnvId,
             dscreqSubConv = scnvId,

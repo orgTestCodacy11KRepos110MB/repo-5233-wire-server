@@ -53,10 +53,12 @@ import Data.Singletons
 import Data.Time.Clock
 import Galley.API.Error
 import Galley.API.MLS.Removal
+import Galley.API.MLS.Types (SubConversation (scMLSData), cmAssocs)
 import Galley.API.Util
 import Galley.App
 import Galley.Data.Conversation
 import qualified Galley.Data.Conversation as Data
+import Galley.Data.Conversation.Types (mlsMetadata)
 import Galley.Data.Services
 import Galley.Data.Types
 import Galley.Effects
@@ -67,7 +69,8 @@ import qualified Galley.Effects.ConversationStore as E
 import qualified Galley.Effects.FederatorAccess as E
 import qualified Galley.Effects.FireAndForget as E
 import qualified Galley.Effects.MemberStore as E
-import Galley.Effects.ProposalStore
+import qualified Galley.Effects.ProposalStore as E
+import qualified Galley.Effects.SubConversationStore as E
 import qualified Galley.Effects.TeamStore as E
 import Galley.Options
 import Galley.Types.Conversations.Members
@@ -146,7 +149,18 @@ type family HasConversationActionEffects (tag :: ConversationActionTag) r :: Con
   HasConversationActionEffects 'ConversationMemberUpdateTag r =
     (Members '[MemberStore, ErrorS 'ConvMemberNotFound] r)
   HasConversationActionEffects 'ConversationDeleteTag r =
-    Members '[Error FederationError, ErrorS 'NotATeamMember, CodeStore, TeamStore, ConversationStore] r
+    Members
+      '[ Error FederationError,
+         ErrorS 'NotATeamMember,
+         BrigAccess,
+         CodeStore,
+         ConversationStore,
+         MemberStore,
+         TeamStore,
+         ProposalStore,
+         SubConversationStore
+       ]
+      r
   HasConversationActionEffects 'ConversationRenameTag r =
     Members '[Error InvalidInput, ConversationStore] r
   HasConversationActionEffects 'ConversationAccessDataTag r =
@@ -346,6 +360,27 @@ performAction tag origUser lconv action = do
       case convTeam conv of
         Nothing -> E.deleteConversation (tUnqualified lcnv)
         Just tid -> E.deleteTeamConversation tid (tUnqualified lcnv)
+
+      let deleteGroup groupId = do
+            cm <- E.lookupMLSClients groupId
+            let refs = cm & cmAssocs & map (snd . snd)
+            E.deleteKeyPackageRefs refs
+            E.removeAllMLSClients groupId
+            E.deleteAllProposals groupId
+
+      let cid = convId conv
+      for_ (conv & mlsMetadata <&> cnvmlsGroupId) $ \gidParent -> do
+        sconvs <- E.listSubConversations cid
+        for_ sconvs $ \subid -> do
+          mSubconv <- E.getSubConversation cid subid
+          for_ mSubconv $ \sconv -> do
+            let gidSub = cnvmlsGroupId (scMLSData sconv)
+            E.deleteSubConversation cid subid
+            E.deleteGroupIdForSubConversation gidSub
+            deleteGroup gidSub
+        E.deleteGroupIdForConversation gidParent
+        deleteGroup gidParent
+
       pure (mempty, action)
     SConversationRenameTag -> do
       cn <- rangeChecked (cupName action)

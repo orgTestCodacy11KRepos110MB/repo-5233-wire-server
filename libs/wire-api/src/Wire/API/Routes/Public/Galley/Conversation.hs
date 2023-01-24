@@ -432,7 +432,7 @@ type ConversationAPI =
                :> QualifiedCapture "cnv" ConvId
                :> "subconversations"
                :> Capture "subconv" SubConvId
-               :> ReqBody '[JSON] DeleteSubConversation
+               :> ReqBody '[JSON] DeleteSubConversationRequest
                :> MultiVerb1
                     'DELETE
                     '[JSON]
