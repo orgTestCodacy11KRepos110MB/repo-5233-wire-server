@@ -219,7 +219,8 @@ tests s =
               test s "send an application message in a subconversation" testSendMessageSubConv,
               test s "reset a subconversation as a member" (testDeleteSubConv True),
               test s "reset a subconversation as a non-member" (testDeleteSubConv False),
-              test s "fail to reset a subconversation with wrong epoch" testDeleteSubConvStale
+              test s "fail to reset a subconversation with wrong epoch" testDeleteSubConvStale,
+              test s "delete parent conversation of a subconversation" testDeleteParentOfSubConv
             ],
           testGroup
             "Local Sender/Remote Subconversation"
@@ -235,7 +236,8 @@ tests s =
               test s "get subconversation as a remote non-member" (testRemoteMemberGetSubConv False),
               test s "client of a remote user joins subconversation" testRemoteUserJoinSubConv,
               test s "delete subconversation as a remote member" (testRemoteMemberDeleteSubConv True),
-              test s "delete subconversation as a remote non-member" (testRemoteMemberDeleteSubConv False)
+              test s "delete subconversation as a remote non-member" (testRemoteMemberDeleteSubConv False),
+              test s "delete parent conversation of a remote subconveration" testDeleteRemoteParentOfSubConv
             ]
         ]
     ]
@@ -2563,6 +2565,14 @@ testDeleteSubConvStale = do
   let dsc = DeleteSubConversationRequest (pscGroupId sub) (pscEpoch sub)
   deleteSubConv (qUnqualified alice) qcnv sconv dsc
     !!! do const 409 === statusCode
+
+testDeleteParentOfSubConv :: TestM ()
+testDeleteParentOfSubConv = do
+  error "TODO"
+
+testDeleteRemoteParentOfSubConv :: TestM ()
+testDeleteRemoteParentOfSubConv = do
+  error "TODO"
 
 testDeleteRemoteSubConv :: Bool -> TestM ()
 testDeleteRemoteSubConv isAMember = do
