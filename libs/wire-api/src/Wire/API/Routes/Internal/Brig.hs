@@ -224,55 +224,57 @@ instance ToSchema DeleteKeyPackageRefsRequest where
 type MLSAPI =
   "mls"
     :> ( ( "key-packages"
-             :> Capture "ref" KeyPackageRef
-             :> ( Named
-                    "get-client-by-key-package-ref"
-                    ( Summary "Resolve an MLS key package ref to a qualified client ID"
-                        :> MultiVerb
-                             'GET
-                             '[Servant.JSON]
-                             '[ RespondEmpty 404 "Key package ref not found",
-                                Respond 200 "Key package ref found" ClientIdentity
-                              ]
-                             (Maybe ClientIdentity)
-                    )
-                    :<|> ( "conversation"
-                             :> ( PutConversationByKeyPackageRef
-                                    :<|> GetConversationByKeyPackageRef
-                                )
+             :> ( ( Capture "ref" KeyPackageRef
+                      :> ( Named
+                             "get-client-by-key-package-ref"
+                             ( Summary "Resolve an MLS key package ref to a qualified client ID"
+                                 :> MultiVerb
+                                      'GET
+                                      '[Servant.JSON]
+                                      '[ RespondEmpty 404 "Key package ref not found",
+                                         Respond 200 "Key package ref found" ClientIdentity
+                                       ]
+                                      (Maybe ClientIdentity)
+                             )
+                             :<|> ( "conversation"
+                                      :> ( PutConversationByKeyPackageRef
+                                             :<|> GetConversationByKeyPackageRef
+                                         )
+                                  )
+                             :<|> Named
+                                    "put-key-package-ref"
+                                    ( Summary "Create a new KeyPackageRef mapping"
+                                        :> ReqBody '[Servant.JSON] NewKeyPackageRef
+                                        :> MultiVerb
+                                             'PUT
+                                             '[Servant.JSON]
+                                             '[RespondEmpty 201 "Key package ref mapping created"]
+                                             ()
+                                    )
+                             :<|> Named
+                                    "post-key-package-ref"
+                                    ( Summary "Update a KeyPackageRef in mapping"
+                                        :> ReqBody '[Servant.JSON] KeyPackageRef
+                                        :> MultiVerb
+                                             'POST
+                                             '[Servant.JSON]
+                                             '[RespondEmpty 201 "Key package ref mapping updated"]
+                                             ()
+                                    )
                          )
+                  )
                     :<|> Named
-                           "put-key-package-ref"
-                           ( Summary "Create a new KeyPackageRef mapping"
-                               :> ReqBody '[Servant.JSON] NewKeyPackageRef
+                           "delete-key-package-refs"
+                           ( Summary "Delete a batch of KeyPackageRef mappings"
+                               :> ReqBody '[Servant.JSON] DeleteKeyPackageRefsRequest
                                :> MultiVerb
-                                    'PUT
+                                    'DELETE
                                     '[Servant.JSON]
-                                    '[RespondEmpty 201 "Key package ref mapping created"]
-                                    ()
-                           )
-                    :<|> Named
-                           "post-key-package-ref"
-                           ( Summary "Update a KeyPackageRef in mapping"
-                               :> ReqBody '[Servant.JSON] KeyPackageRef
-                               :> MultiVerb
-                                    'POST
-                                    '[Servant.JSON]
-                                    '[RespondEmpty 201 "Key package ref mapping updated"]
+                                    '[RespondEmpty 200 "Key package ref mappings deleted"]
                                     ()
                            )
                 )
          )
-           :<|> Named
-                  "delete-key-package-refs"
-                  ( Summary "Delete a batch of KeyPackageRef mappings"
-                      :> ReqBody '[Servant.JSON] DeleteKeyPackageRefsRequest
-                      :> MultiVerb
-                           'DELETE
-                           '[Servant.JSON]
-                           '[RespondEmpty 200 "Key package ref mappings deleted"]
-                           ()
-                  )
            :<|> GetMLSClients
            :<|> MapKeyPackageRefs
            :<|> Named

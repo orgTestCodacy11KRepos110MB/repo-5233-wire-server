@@ -139,15 +139,16 @@ ejpdAPI =
 
 mlsAPI :: ServerT BrigIRoutes.MLSAPI (Handler r)
 mlsAPI =
-  ( \ref ->
-      Named @"get-client-by-key-package-ref" (getClientByKeyPackageRef ref)
-        :<|> ( Named @"put-conversation-by-key-package-ref" (putConvIdByKeyPackageRef ref)
-                 :<|> Named @"get-conversation-by-key-package-ref" (getConvIdByKeyPackageRef ref)
-             )
-        :<|> Named @"put-key-package-ref" (putKeyPackageRef ref)
-        :<|> Named @"post-key-package-ref" (postKeyPackageRef ref)
+  ( ( \ref ->
+        Named @"get-client-by-key-package-ref" (getClientByKeyPackageRef ref)
+          :<|> ( Named @"put-conversation-by-key-package-ref" (putConvIdByKeyPackageRef ref)
+                   :<|> Named @"get-conversation-by-key-package-ref" (getConvIdByKeyPackageRef ref)
+               )
+          :<|> Named @"put-key-package-ref" (putKeyPackageRef ref)
+          :<|> Named @"post-key-package-ref" (postKeyPackageRef ref)
+    )
+      :<|> Named @"delete-key-package-refs" deleteKeyPackageRefs
   )
-    :<|> Named @"delete-key-package-refs" deleteKeyPackageRefs
     :<|> getMLSClients
     :<|> mapKeyPackageRefsInternal
     :<|> Named @"put-key-package-add" upsertKeyPackage
