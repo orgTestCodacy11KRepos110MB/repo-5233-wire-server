@@ -91,6 +91,7 @@ import Wire.API.Federation.Error
 import Wire.API.Team.LegalHold
 import Wire.API.Team.Member
 import qualified Wire.API.User as User
+import Debug.Trace (traceM)
 
 data NoChanges = NoChanges
 
@@ -128,6 +129,8 @@ type family HasConversationActionEffects (tag :: ConversationActionTag) r :: Con
   HasConversationActionEffects 'ConversationLeaveTag r =
     ( Members
         '[ MemberStore,
+           ProposalStore,
+           SubConversationStore,
            Error InternalError,
            Error NoChanges,
            ExternalAccess,
@@ -135,14 +138,26 @@ type family HasConversationActionEffects (tag :: ConversationActionTag) r :: Con
            GundeckAccess,
            Input UTCTime,
            Input Env,
-           ProposalStore,
-           SubConversationStore,
            TinyLog
          ]
         r
     )
   HasConversationActionEffects 'ConversationRemoveMembersTag r =
-    (Members '[MemberStore, Error NoChanges] r)
+    ( Members
+        '[ MemberStore,
+           SubConversationStore,
+           ProposalStore,
+           Input Env,
+           Input UTCTime,
+           ExternalAccess,
+           FederatorAccess,
+           GundeckAccess,
+           Error InternalError,
+           Error NoChanges,
+           TinyLog
+         ]
+        r
+    )
   HasConversationActionEffects 'ConversationMemberUpdateTag r =
     (Members '[MemberStore, ErrorS 'ConvMemberNotFound] r)
   HasConversationActionEffects 'ConversationDeleteTag r =
@@ -304,6 +319,8 @@ performAction tag origUser lconv action = do
       let presentVictims = filter (isConvMemberL lconv) (toList action)
       when (null presentVictims) noChanges
       traverse_ (convDeleteMembers (toUserList lconv presentVictims)) lconv
+      -- send remove proposals in the MLS case
+      traverse_ (removeUser lconv) presentVictims
       pure (mempty, action) -- FUTUREWORK: should we return the filtered action here?
     SConversationMemberUpdateTag -> do
       void $ ensureOtherMember lconv (cmuTarget action) conv
@@ -581,6 +598,7 @@ updateLocalConversation lcnv qusr con action = do
 
   -- retrieve conversation
   conv <- getConversationWithError lcnv
+  traceM $ show conv
 
   -- check that the action does not bypass the underlying protocol
   unless (protocolValidAction (convProtocol conv) (fromSing tag)) $

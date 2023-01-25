@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -Wno-incomplete-uni-patterns -Wno-unused-matches #-}
+{-# OPTIONS_GHC -Wno-incomplete-uni-patterns -Wno-unused-matches -Wno-unused-imports #-}
 
 -- This file is part of the Wire Server implementation.
 --
@@ -44,7 +44,9 @@ import Data.Singletons
 import Data.String.Conversions
 import qualified Data.Text as T
 import Data.Time
+import Debug.Trace
 import Federator.MockServer hiding (withTempMockFederator)
+import Galley.Cassandra.Conversation.MLS (lookupMLSClients)
 import Imports
 import qualified Network.Wai.Utilities.Error as Wai
 import Test.QuickCheck (Arbitrary (arbitrary), generate)
@@ -61,9 +63,11 @@ import Wire.API.Conversation.Role
 import Wire.API.Error.Galley
 import Wire.API.Federation.API.Common
 import Wire.API.Federation.API.Galley
+import Wire.API.Internal.Notification (ntfPayload)
 import Wire.API.MLS.CipherSuite
 import Wire.API.MLS.Credential
 import Wire.API.MLS.Epoch
+import Wire.API.MLS.Group
 import Wire.API.MLS.Keys
 import Wire.API.MLS.Serialisation
 import Wire.API.MLS.SubConversation
@@ -222,7 +226,8 @@ tests s =
               test s "reset a subconversation" testDeleteSubConv,
               test s "fail to reset a subconversation with wrong epoch" testDeleteSubConvStale,
               test s "remove user from parent conversation" testRemoveUserParent,
-              test s "remove creator from parent conversation" testRemoveCreatorParent
+              test s "remove creator from parent conversation" testRemoveCreatorParent,
+              test s "creator removes user from parent conversation" testCreatorRemovesUserFromParent
             ],
           testGroup
             "Local Sender/Remote Subconversation"
@@ -822,7 +827,12 @@ testAdminRemovesUserFromConv = do
 
   do
     convs <- getAllConvs (qUnqualified bob)
-    liftIO $
+    clients <- getConvClients (qUnqualified alice) (qUnqualified qcnv)
+    liftIO $ do
+      assertEqual
+        ("Expected only one client, got " <> show clients)
+        (length . clClients $ clients)
+        1
       assertBool
         "bob is not longer part of conversation after the commit"
         (qcnv `notElem` map cnvQualifiedId convs)
@@ -2671,7 +2681,7 @@ testRemoveCreatorParent = do
           deleteMemberQualified (qUnqualified alice) alice qcnv
             !!! const 200 === statusCode
 
-        -- Remove charlie from our state as well
+        -- Remove alice1 from our state as well
         State.modify $ \mls ->
           mls
             { mlsMembers = Set.difference (mlsMembers mls) (Set.fromList [alice1])
@@ -2695,7 +2705,7 @@ testRemoveCreatorParent = do
                 <!! const 200 === statusCode
           liftIO $
             assertEqual
-              "subconv membership mismatch after removal"
+              "1. subconv membership mismatch after removal"
               (sort [charlie1, charlie2, bob1, bob2])
               (sort $ pscMembers sub)
 
@@ -2706,6 +2716,80 @@ testRemoveCreatorParent = do
                 <!! const 200 === statusCode
           liftIO $
             assertEqual
-              "subconv membership mismatch after removal"
+              "2. subconv membership mismatch after removal"
               (sort [charlie1, charlie2, bob1, bob2])
               (sort $ pscMembers sub1)
+
+testCreatorRemovesUserFromParent :: TestM ()
+testCreatorRemovesUserFromParent = do
+  [alice, bob, charlie] <- createAndConnectUsers [Nothing, Nothing, Nothing]
+
+  runMLSTest $
+    do
+      [alice1, bob1, bob2, charlie1, charlie2] <-
+        traverse
+          createMLSClient
+          [alice, bob, bob, charlie, charlie]
+      traverse_ uploadNewKeyPackage [bob1, bob2, charlie1, charlie2]
+      (_, qcnv) <- setupMLSGroup alice1
+      void $ createAddCommit alice1 [bob, charlie] >>= sendAndConsumeCommit
+
+      -- fork here, so changes outside of this block still apply to parent
+      subConvState <- forkMLSTest $ do
+        let subname = "conference"
+        createSubConv qcnv alice1 subname
+        let qcs = convsub qcnv (Just subname)
+
+        -- all clients join
+        for_ [bob1, bob2, charlie1, charlie2] $ \c ->
+          void $ createExternalCommit c Nothing qcs >>= sendAndConsumeCommitBundle
+
+      -- creator alice kicks bob out
+      mlsBracket [charlie1, charlie2] $ \wss -> do
+        events <- createRemoveCommit alice1 [bob1, bob2] >>= sendAndConsumeCommitBundle
+        liftIO $ assertOne events >>= assertLeaveEvent qcnv alice [bob]
+
+        withMLSState subConvState $ do
+          WS.assertMatchN_ (5 # Second) wss $ \n ->
+            wsAssertMemberLeave qcnv alice [bob] n
+
+      liftTest $ do
+        getSubConv (qUnqualified bob) qcnv (SubConvId "conference")
+          !!! const 403 === statusCode
+
+        clients <- getConvClients (qUnqualified alice) (qUnqualified qcnv)
+        convs <- getAllConvs (qUnqualified bob)
+        liftIO $ do
+          assertEqual
+            "Parent conversation client list mismatch"
+            (sort $ clClients clients)
+            (sort $ ciClient <$> [alice1, charlie1, charlie2])
+          assertBool
+            "bob is not longer part of conversation after the commit"
+            (qcnv `notElem` map cnvQualifiedId convs)
+
+        -- charlie sees updated memberlist
+        sub :: PublicSubConversation <-
+          responseJsonError
+            =<< getSubConv (qUnqualified charlie) qcnv (SubConvId "conference")
+              <!! const 200 === statusCode
+        liftIO $
+          assertEqual
+            ( "1. subconv membership mismatch after removal. Expected 3 clients, got "
+                <> (show . length . pscMembers $ sub)
+            )
+            (sort [alice1, charlie1, charlie2])
+            (sort $ pscMembers sub)
+
+-- -- alice also sees updated memberlist
+-- sub1 :: PublicSubConversation <-
+--   responseJsonError
+--     =<< getSubConv (qUnqualified alice) qcnv (SubConvId "conference")
+--       <!! const 200 === statusCode
+-- liftIO $
+--   assertEqual
+--     ( "2. subconv membership mismatch after removal. Expected 3 clients, got "
+--         <> (show . length . pscMembers $ sub1)
+--     )
+--     (sort [alice1, charlie1, charlie2])
+--     (sort $ pscMembers sub1)

@@ -996,6 +996,17 @@ getConvs u cids = do
       . zConn "conn"
       . json (ListConversations (unsafeRange cids))
 
+getConvClients :: HasCallStack => UserId -> ConvId -> TestM ClientList
+getConvClients usr cnv = do
+  g <- viewGalley
+  responseJsonError
+    =<< get
+      ( g
+          . paths ["conversation", toByteString' cnv]
+          . zUser usr
+          . zConn "conn"
+      )
+
 getAllConvs :: HasCallStack => UserId -> TestM [Conversation]
 getAllConvs u = do
   g <- viewGalley
