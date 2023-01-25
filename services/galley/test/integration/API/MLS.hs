@@ -2568,7 +2568,41 @@ testDeleteSubConvStale = do
 
 testDeleteParentOfSubConv :: TestM ()
 testDeleteParentOfSubConv = do
-  error "TODO"
+  (tid, aliceUnqualified, [bobUnqualified]) <- API.Util.createBindingTeamWithMembers 2
+
+  localDomain <- viewFederationDomain
+  let alice = Qualified aliceUnqualified localDomain
+      bob = Qualified bobUnqualified localDomain
+
+  let sconv = SubConvId "conference"
+  qcnv <- runMLSTest $ do
+    [alice1, bob1] <- traverse createMLSClient [alice, bob]
+    traverse_ uploadNewKeyPackage [bob1]
+    (_, qcnv) <- setupMLSGroup alice1
+    void $ createAddCommit alice1 [bob] >>= sendAndConsumeCommit
+    sub <- createSubConv qcnv alice1 sconv
+    resetGroup bob1 (pscGroupId sub)
+    void $ createExternalCommit bob1 Nothing (convsub qcnv (Just (pscSubConvId sub))) >>= sendAndConsumeCommitBundle
+
+    sub' <-
+      responseJsonError
+        =<< liftTest
+          ( getSubConv (qUnqualified alice) qcnv sconv
+              <!! do const 200 === statusCode
+          )
+
+    void $ assertOne (filter (== bob1) (pscMembers sub'))
+
+    pure qcnv
+
+  -- DB clean up can't be tested from API calls alone
+  -- But this at least tests the clean up db calls don't crash
+  deleteTeamConv tid (qUnqualified qcnv) (qUnqualified alice)
+    !!! const 200
+      === statusCode
+
+  getSubConv (qUnqualified alice) qcnv sconv
+    !!! do const 404 === statusCode
 
 testDeleteRemoteParentOfSubConv :: TestM ()
 testDeleteRemoteParentOfSubConv = do
