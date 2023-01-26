@@ -151,6 +151,7 @@ postMLSMessageFromLocalUserV1 ::
     CallsFed 'Galley "send-mls-message",
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Brig "get-mls-clients"
   ) =>
   Local UserId ->
@@ -196,6 +197,7 @@ postMLSMessageFromLocalUser ::
     CallsFed 'Galley "send-mls-message",
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Brig "get-mls-clients"
   ) =>
   Local UserId ->
@@ -234,6 +236,7 @@ postMLSCommitBundle ::
     CallsFed 'Galley "send-mls-commit-bundle",
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Brig "get-mls-clients"
   ) =>
   Local x ->
@@ -273,6 +276,7 @@ postMLSCommitBundleFromLocalUser ::
     CallsFed 'Galley "send-mls-commit-bundle",
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Brig "get-mls-clients"
   ) =>
   Local UserId ->
@@ -310,6 +314,7 @@ postMLSCommitBundleToLocalConv ::
     CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "mls-welcome",
     CallsFed 'Galley "on-conversation-updated",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Galley "on-new-remote-conversation",
     CallsFed 'Brig "get-mls-clients"
   ) =>
@@ -372,6 +377,7 @@ postMLSCommitBundleToRemoteConv ::
          TinyLog
        ]
       r,
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Galley "send-mls-commit-bundle"
   ) =>
   Local x ->
@@ -435,6 +441,7 @@ postMLSMessage ::
     CallsFed 'Galley "send-mls-message",
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Brig "get-mls-clients"
   ) =>
   Local x ->
@@ -530,6 +537,7 @@ postMLSMessageToLocalConv ::
     CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Brig "get-mls-clients"
   ) =>
   Qualified UserId ->
@@ -700,6 +708,7 @@ processCommit ::
     CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Brig "get-mls-clients"
   ) =>
   Qualified UserId ->
@@ -854,6 +863,7 @@ processCommitWithAction ::
     CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Brig "get-mls-clients"
   ) =>
   Qualified UserId ->
@@ -893,6 +903,7 @@ processInternalCommit ::
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Brig "get-mls-clients"
   ) =>
   Qualified UserId ->
@@ -1243,7 +1254,8 @@ type HasProposalActionEffects r =
     Member TinyLog r,
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation"
   )
 
 executeProposalAction ::

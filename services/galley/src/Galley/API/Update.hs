@@ -292,7 +292,8 @@ updateConversationAccess ::
   ( Members UpdateConversationAccessEffects r,
     CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-new-remote-conversation",
-    CallsFed 'Galley "on-conversation-updated"
+    CallsFed 'Galley "on-conversation-updated",
+    CallsFed 'Galley "on-delete-mls-conversation"
   ) =>
   Local UserId ->
   ConnId ->
@@ -308,7 +309,8 @@ updateConversationAccessUnqualified ::
   ( Members UpdateConversationAccessEffects r,
     CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-new-remote-conversation",
-    CallsFed 'Galley "on-conversation-updated"
+    CallsFed 'Galley "on-conversation-updated",
+    CallsFed 'Galley "on-delete-mls-conversation"
   ) =>
   Local UserId ->
   ConnId ->
@@ -516,7 +518,8 @@ deleteLocalConversation ::
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation"
   ) =>
   Local UserId ->
   ConnId ->
@@ -849,7 +852,8 @@ addMembers ::
       r,
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation"
   ) =>
   Local UserId ->
   ConnId ->
@@ -892,7 +896,8 @@ addMembersUnqualifiedV2 ::
       r,
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation"
   ) =>
   Local UserId ->
   ConnId ->
@@ -935,7 +940,8 @@ addMembersUnqualified ::
       r,
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation"
   ) =>
   Local UserId ->
   ConnId ->

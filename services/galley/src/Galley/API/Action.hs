@@ -155,6 +155,7 @@ type family HasConversationActionEffects (tag :: ConversationActionTag) r :: Con
          BrigAccess,
          CodeStore,
          ConversationStore,
+         FederatorAccess,
          MemberStore,
          TeamStore,
          ProposalStore,
@@ -292,15 +293,20 @@ type family PerformActionCalls tag where
   PerformActionCalls 'ConversationAccessDataTag =
     ( CallsFed 'Galley "on-conversation-updated",
       CallsFed 'Galley "on-mls-message-sent",
-      CallsFed 'Galley "on-new-remote-conversation"
+      CallsFed 'Galley "on-new-remote-conversation",
+      CallsFed 'Galley "on-delete-mls-conversation"
     )
   PerformActionCalls 'ConversationJoinTag =
     ( CallsFed 'Galley "on-conversation-updated",
       CallsFed 'Galley "on-mls-message-sent",
-      CallsFed 'Galley "on-new-remote-conversation"
+      CallsFed 'Galley "on-new-remote-conversation",
+      CallsFed 'Galley "on-delete-mls-conversation"
     )
   PerformActionCalls 'ConversationLeaveTag =
     ( CallsFed 'Galley "on-mls-message-sent"
+    )
+  PerformActionCalls 'ConversationDeleteTag =
+    ( CallsFed 'Galley "on-delete-mls-conversation"
     )
   PerformActionCalls tag = ()
 
@@ -355,12 +361,6 @@ performAction tag origUser lconv action = do
       E.setOtherMember lcnv (cmuTarget action) (cmuUpdate action)
       pure (mempty, action)
     SConversationDeleteTag -> do
-      key <- E.makeKey (tUnqualified lcnv)
-      E.deleteCode key ReusableCode
-      case convTeam conv of
-        Nothing -> E.deleteConversation (tUnqualified lcnv)
-        Just tid -> E.deleteTeamConversation tid (tUnqualified lcnv)
-
       let deleteGroup groupId = do
             cm <- E.lookupMLSClients groupId
             let refs = cm & cmAssocs & map (snd . snd)
@@ -371,15 +371,28 @@ performAction tag origUser lconv action = do
       let cid = convId conv
       for_ (conv & mlsMetadata <&> cnvmlsGroupId) $ \gidParent -> do
         sconvs <- E.listSubConversations cid
-        for_ sconvs $ \subid -> do
+        gidSubs <- for sconvs $ \subid -> do
           mSubconv <- E.getSubConversation cid subid
-          for_ mSubconv $ \sconv -> do
+          for mSubconv $ \sconv -> do
             let gidSub = cnvmlsGroupId (scMLSData sconv)
             E.deleteSubConversation cid subid
             E.deleteGroupIdForSubConversation gidSub
             deleteGroup gidSub
+            pure gidSub
+
         E.deleteGroupIdForConversation gidParent
         deleteGroup gidParent
+
+        let odr = OnDeleteMLSConversationRequest ([gidParent] <> catMaybes gidSubs)
+        let remotes = bucketRemote (map rmId (Data.convRemoteMembers conv))
+        E.runFederatedConcurrently_ remotes $ \_ -> do
+          void $ fedClient @'Galley @"on-delete-mls-conversation" odr
+
+      key <- E.makeKey (tUnqualified lcnv)
+      E.deleteCode key ReusableCode
+      case convTeam conv of
+        Nothing -> E.deleteConversation (tUnqualified lcnv)
+        Just tid -> E.deleteTeamConversation tid (tUnqualified lcnv)
 
       pure (mempty, action)
     SConversationRenameTag -> do
@@ -402,7 +415,8 @@ performConversationJoin ::
   ( HasConversationActionEffects 'ConversationJoinTag r,
     CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation"
   ) =>
   Qualified UserId ->
   Local Conversation ->
@@ -532,7 +546,8 @@ performConversationAccessData ::
   ( HasConversationActionEffects 'ConversationAccessDataTag r,
     CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation"
   ) =>
   Qualified UserId ->
   Local Conversation ->

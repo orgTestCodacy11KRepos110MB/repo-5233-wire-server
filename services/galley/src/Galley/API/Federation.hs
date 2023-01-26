@@ -54,7 +54,9 @@ import Galley.App
 import qualified Galley.Data.Conversation as Data
 import Galley.Effects
 import qualified Galley.Effects.BrigAccess as E
+import Galley.Effects.ConversationStore (deleteGroupIds)
 import qualified Galley.Effects.ConversationStore as E
+import qualified Galley.Effects.FederatorAccess as E
 import qualified Galley.Effects.FireAndForget as E
 import qualified Galley.Effects.MemberStore as E
 import Galley.Effects.SubConversationSupply
@@ -95,7 +97,7 @@ import Wire.API.MLS.SubConversation
 import Wire.API.MLS.Welcome
 import Wire.API.Message
 import Wire.API.Routes.Internal.Brig.Connection
-import Wire.API.Routes.Named
+import Wire.API.Routes.Named (Named (Named))
 import Wire.API.ServantProto
 
 type FederationAPI = "federation" :> FedApi 'Galley
@@ -121,7 +123,8 @@ federationSitemap =
     :<|> Named @"on-client-removed" (callsFed onClientRemoved)
     :<|> Named @"on-typing-indicator-updated" onTypingIndicatorUpdated
     :<|> Named @"get-sub-conversation" getSubConversationForRemoteUser
-    :<|> Named @"delete-sub-conversation" deleteSubConversationForRemoteUser
+    :<|> Named @"on-delete-mls-conversation" onDeleteMLSConversation
+    :<|> Named @"delete-sub-conversation" (callsFed deleteSubConversationForRemoteUser)
 
 onClientRemoved ::
   ( Members
@@ -352,6 +355,7 @@ leaveConversation ::
       r,
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-mls-message-sent",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Galley "on-new-remote-conversation"
   ) =>
   Domain ->
@@ -558,7 +562,8 @@ updateConversation ::
       r,
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation"
   ) =>
   Domain ->
   F.ConversationUpdateRequest ->
@@ -647,6 +652,7 @@ sendMLSCommitBundle ::
     CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-new-remote-conversation",
     CallsFed 'Galley "send-mls-commit-bundle",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Brig "get-mls-clients"
   ) =>
   Domain ->
@@ -697,6 +703,7 @@ sendMLSMessage ::
     CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-new-remote-conversation",
     CallsFed 'Galley "send-mls-message",
+    CallsFed 'Galley "on-delete-mls-conversation",
     CallsFed 'Brig "get-mls-clients"
   ) =>
   Domain ->
@@ -899,16 +906,19 @@ getSubConversationForRemoteUser domain GetSubConversationsRequest {..} =
       getLocalSubConversation qusr lconv gsreqSubConv
 
 deleteSubConversationForRemoteUser ::
-  Members
-    '[ ConversationStore,
-       Input (Local ()),
-       Input Env,
-       MemberStore,
-       Resource,
-       SubConversationStore,
-       SubConversationSupply
-     ]
-    r =>
+  ( Members
+      '[ ConversationStore,
+         Input (Local ()),
+         Input Env,
+         MemberStore,
+         Resource,
+         FederatorAccess,
+         SubConversationStore,
+         SubConversationSupply
+       ]
+      r,
+    CallsFed 'Galley "on-delete-mls-conversation"
+  ) =>
   Domain ->
   DeleteSubConversationFedRequest ->
   Sem r DeleteSubConversationResponse
@@ -924,4 +934,22 @@ deleteSubConversationForRemoteUser domain DeleteSubConversationFedRequest {..} =
       let qusr = Qualified dscreqUser domain
           dsc = DeleteSubConversationRequest dscreqGroupId dscreqEpoch
       lconv <- qualifyLocal dscreqConv
-      deleteLocalSubConversation qusr lconv dscreqSubConv dsc
+
+      mconv <- E.getConversation dscreqConv
+
+      for_ mconv $ \conv -> do
+        let remotes = bucketRemote (map rmId (Data.convRemoteMembers conv))
+        let odr = OnDeleteMLSConversationRequest [dscreqGroupId]
+        E.runFederatedConcurrently_ remotes $ \_ -> do
+          void $ fedClient @'Galley @"on-delete-mls-conversation" odr
+
+        deleteLocalSubConversation qusr lconv dscreqSubConv dsc
+
+onDeleteMLSConversation ::
+  Members '[ConversationStore] r =>
+  Domain ->
+  OnDeleteMLSConversationRequest ->
+  Sem r EmptyResponse
+onDeleteMLSConversation _domain OnDeleteMLSConversationRequest {..} = do
+  deleteGroupIds odmcGroupIds
+  pure EmptyResponse

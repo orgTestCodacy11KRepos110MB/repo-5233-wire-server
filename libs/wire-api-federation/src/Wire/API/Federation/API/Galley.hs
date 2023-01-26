@@ -63,7 +63,8 @@ type GalleyApi =
     :<|> FedEndpointWithMods
            '[ MakesFederatedCall 'Galley "on-conversation-updated",
               MakesFederatedCall 'Galley "on-mls-message-sent",
-              MakesFederatedCall 'Galley "on-new-remote-conversation"
+              MakesFederatedCall 'Galley "on-new-remote-conversation",
+              MakesFederatedCall 'Galley "on-delete-mls-conversation"
             ]
            "leave-conversation"
            LeaveConversationRequest
@@ -91,6 +92,7 @@ type GalleyApi =
     :<|> FedEndpointWithMods
            '[ MakesFederatedCall 'Galley "on-conversation-updated",
               MakesFederatedCall 'Galley "on-mls-message-sent",
+              MakesFederatedCall 'Galley "on-delete-mls-conversation",
               MakesFederatedCall 'Galley "on-new-remote-conversation"
             ]
            "update-conversation"
@@ -103,6 +105,7 @@ type GalleyApi =
               MakesFederatedCall 'Galley "on-mls-message-sent",
               MakesFederatedCall 'Galley "on-new-remote-conversation",
               MakesFederatedCall 'Galley "send-mls-message",
+              MakesFederatedCall 'Galley "on-delete-mls-conversation",
               MakesFederatedCall 'Brig "get-mls-clients"
             ]
            "send-mls-message"
@@ -113,7 +116,9 @@ type GalleyApi =
               MakesFederatedCall 'Galley "on-conversation-updated",
               MakesFederatedCall 'Galley "on-mls-message-sent",
               MakesFederatedCall 'Galley "on-new-remote-conversation",
+              MakesFederatedCall 'Galley "on-delete-mls-conversation",
               MakesFederatedCall 'Galley "send-mls-commit-bundle",
+              MakesFederatedCall 'Galley "on-delete-mls-conversation",
               MakesFederatedCall 'Brig "get-mls-clients"
             ]
            "send-mls-commit-bundle"
@@ -128,7 +133,13 @@ type GalleyApi =
            EmptyResponse
     :<|> FedEndpoint "on-typing-indicator-updated" TypingDataUpdateRequest EmptyResponse
     :<|> FedEndpoint "get-sub-conversation" GetSubConversationsRequest GetSubConversationsResponse
-    :<|> FedEndpoint "delete-sub-conversation" DeleteSubConversationFedRequest DeleteSubConversationResponse
+    :<|> FedEndpoint "on-delete-mls-conversation" OnDeleteMLSConversationRequest EmptyResponse
+    :<|> FedEndpointWithMods
+           '[ MakesFederatedCall 'Galley "on-delete-mls-conversation"
+            ]
+           "delete-sub-conversation"
+           DeleteSubConversationFedRequest
+           DeleteSubConversationResponse
 
 data TypingDataUpdateRequest = TypingDataUpdateRequest
   { tdurTypingStatus :: TypingStatus,
@@ -451,3 +462,9 @@ data DeleteSubConversationResponse
   | DeleteSubConversationResponseSuccess
   deriving stock (Eq, Show, Generic)
   deriving (ToJSON, FromJSON) via (CustomEncoded DeleteSubConversationResponse)
+
+newtype OnDeleteMLSConversationRequest = OnDeleteMLSConversationRequest
+  { odmcGroupIds :: [GroupId]
+  }
+  deriving stock (Eq, Show, Generic)
+  deriving (FromJSON, ToJSON) via (CustomEncoded OnDeleteMLSConversationRequest)
