@@ -89,7 +89,7 @@ removeClientsWithClientMap lConvOrSubConv kprefs qusr = do
           (proposalRef (cnvmlsCipherSuite meta) proposal)
           ProposalOriginBackend
           proposal
-        traceM $ "\n 4. proposal msg: " <> show msgEncoded
+        traceM $ "\n 4. proposal msg: " <> show proposal
         propagateMessage qusr lConvOrSubConv Nothing msgEncoded
 
 removeClientsWithClientMapRecursively ::
@@ -122,7 +122,7 @@ removeClientsWithClientMapRecursively lMlsConv getKPs qusr = do
     let subConv = fmap (flip SubConv sub) lMlsConv
 
     -- let kps = toList $ getKPs (tUnqualified subConv)
-    -- traceM $ "\nsub kps :" <> show kps
+    -- traceM $ "\nsub kps :" <> show (sort kps == sort kpsParent)
     traceM "\n2. Iterating subconvs"
     removeClientsWithClientMap
       subConv

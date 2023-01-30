@@ -95,6 +95,7 @@ import Wire.API.MLS.Welcome
 import Wire.API.Message
 import Wire.API.Routes.Internal.Brig
 import Wire.API.User.Client
+import Debug.Trace (traceM)
 
 type MLSMessageStaticErrors =
   '[ ErrorS 'ConvAccessDenied,
@@ -352,6 +353,7 @@ postMLSCommitBundleToLocalConv qusr mc conn bundle lConvOrSubId = do
     ApplicationMessage _ -> throwS @'MLSUnsupportedMessage
     ProposalMessage _ -> throwS @'MLSUnsupportedMessage
 
+  traceM $ "\n 11111111111111111111111111111 commit bundle to local: " 
   propagateMessage qusr lConvOrSub conn (rmRaw (cbCommitMsg bundle))
 
   for_ (cbWelcome bundle) $
@@ -556,6 +558,7 @@ postMLSMessageToLocalConv qusr senderClient con smsg convOrSubId = case rmValue 
         Right ApplicationMessageTag -> pure mempty
         Left _ -> throwS @'MLSUnsupportedMessage
 
+    traceM "\n 11111111111111111111111111111 msg to local"
     propagateMessage qusr lConvOrSub con (rmRaw smsg)
 
     pure events

@@ -82,6 +82,7 @@ import Wire.API.MLS.Serialisation
 import Wire.API.MLS.SubConversation
 import Wire.API.User.Client
 import Wire.API.User.Client.Prekey
+import Debug.Trace (traceM)
 
 cid2Str :: ClientIdentity -> String
 cid2Str cid =
@@ -276,6 +277,7 @@ data MessagePackage = MessagePackage
     mpWelcome :: Maybe ByteString,
     mpPublicGroupState :: Maybe ByteString
   }
+  deriving Show
 
 takeLastPrekeyNG :: HasCallStack => MLSTest LastPrekey
 takeLastPrekeyNG = do
@@ -864,6 +866,7 @@ consumeMessage1 cid msg = do
   bd <- State.gets mlsBaseDir
   g <- currentGroupFile cid
   gNew <- nextGroupFile cid
+  traceM $ "------- consume: " <> show msg <> " -- to: " <> show cid 
   void $
     mlscli
       cid
