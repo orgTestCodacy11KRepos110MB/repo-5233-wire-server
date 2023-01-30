@@ -40,10 +40,12 @@ import qualified Galley.Data.Conversation as Data
 import Galley.Data.Conversation.Types
 import Galley.Effects
 import Galley.Effects.FederatorAccess
+import qualified Galley.Effects.FederatorAccess as E
 import qualified Galley.Effects.MemberStore as Eff
 import qualified Galley.Effects.SubConversationStore as Eff
 import Galley.Effects.SubConversationSupply (SubConversationSupply)
 import qualified Galley.Effects.SubConversationSupply as Eff
+import Galley.Types.Conversations.Members (RemoteMember (..))
 import Imports
 import Polysemy
 import Polysemy.Error
@@ -232,7 +234,8 @@ deleteSubConversation ::
          SubConversationSupply
        ]
       r,
-    CallsFed 'Galley "delete-sub-conversation"
+    CallsFed 'Galley "delete-sub-conversation",
+    CallsFed 'Galley "on-delete-mls-conversation"
   ) =>
   Local UserId ->
   Qualified ConvId ->
@@ -247,19 +250,22 @@ deleteSubConversation lusr qconv sconv dsc =
     qconv
 
 deleteLocalSubConversation ::
-  Members
-    '[ ConversationStore,
-       ErrorS 'ConvAccessDenied,
-       ErrorS 'ConvNotFound,
-       ErrorS 'MLSNotEnabled,
-       ErrorS 'MLSStaleMessage,
-       Input Env,
-       MemberStore,
-       Resource,
-       SubConversationStore,
-       SubConversationSupply
-     ]
-    r =>
+  ( Members
+      '[ ConversationStore,
+         ErrorS 'ConvAccessDenied,
+         ErrorS 'ConvNotFound,
+         ErrorS 'MLSNotEnabled,
+         ErrorS 'MLSStaleMessage,
+         Input Env,
+         MemberStore,
+         Resource,
+         FederatorAccess,
+         SubConversationStore,
+         SubConversationSupply
+       ]
+      r,
+    CallsFed 'Galley "on-delete-mls-conversation"
+  ) =>
   Qualified UserId ->
   Local ConvId ->
   SubConvId ->
@@ -270,6 +276,7 @@ deleteLocalSubConversation qusr lcnvId scnvId dsc = do
   let cnvId = tUnqualified lcnvId
   cnv <- getConversationAndCheckMembership qusr lcnvId
   cs <- cnvmlsCipherSuite <$> noteS @'ConvNotFound (mlsMetadata cnv)
+
   withCommitLock (dscGroupId dsc) (dscEpoch dsc) $ do
     sconv <-
       Eff.getSubConversation cnvId scnvId
@@ -286,6 +293,11 @@ deleteLocalSubConversation qusr lcnvId scnvId dsc = do
 
     -- the following overwrites any prior information about the subconversation
     Eff.createSubConversation cnvId scnvId cs (Epoch 0) newGid Nothing
+
+    let remotes = bucketRemote (map rmId (Data.convRemoteMembers cnv))
+    let odr = OnDeleteMLSConversationRequest [gid]
+    E.runFederatedConcurrently_ remotes $ \_ -> do
+      void $ fedClient @'Galley @"on-delete-mls-conversation" odr
 
 deleteRemoteSubConversation ::
   ( Members
@@ -308,7 +320,7 @@ deleteRemoteSubConversation ::
 deleteRemoteSubConversation lusr rcnvId scnvId dsc = do
   assertMLSEnabled
   let deleteRequest =
-         DeleteSubConversationFedRequest
+        DeleteSubConversationFedRequest
           { dscreqUser = tUnqualified lusr,
             dscreqConv = tUnqualified rcnvId,
             dscreqSubConv = scnvId,

@@ -56,7 +56,6 @@ import Galley.Effects
 import qualified Galley.Effects.BrigAccess as E
 import Galley.Effects.ConversationStore (deleteGroupIds)
 import qualified Galley.Effects.ConversationStore as E
-import qualified Galley.Effects.FederatorAccess as E
 import qualified Galley.Effects.FireAndForget as E
 import qualified Galley.Effects.MemberStore as E
 import Galley.Effects.SubConversationSupply
@@ -934,16 +933,7 @@ deleteSubConversationForRemoteUser domain DeleteSubConversationFedRequest {..} =
       let qusr = Qualified dscreqUser domain
           dsc = DeleteSubConversationRequest dscreqGroupId dscreqEpoch
       lconv <- qualifyLocal dscreqConv
-
-      mconv <- E.getConversation dscreqConv
-
-      for_ mconv $ \conv -> do
-        let remotes = bucketRemote (map rmId (Data.convRemoteMembers conv))
-        let odr = OnDeleteMLSConversationRequest [dscreqGroupId]
-        E.runFederatedConcurrently_ remotes $ \_ -> do
-          void $ fedClient @'Galley @"on-delete-mls-conversation" odr
-
-        deleteLocalSubConversation qusr lconv dscreqSubConv dsc
+      deleteLocalSubConversation qusr lconv dscreqSubConv dsc
 
 onDeleteMLSConversation ::
   Members '[ConversationStore] r =>

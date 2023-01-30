@@ -423,6 +423,7 @@ type ConversationAPI =
            "delete-subconversation"
            ( Summary "Delete an MLS subconversation"
                :> MakesFederatedCall 'Galley "delete-sub-conversation"
+               :> MakesFederatedCall 'Galley "on-delete-mls-conversation"
                :> CanThrow 'ConvAccessDenied
                :> CanThrow 'ConvNotFound
                :> CanThrow 'MLSNotEnabled

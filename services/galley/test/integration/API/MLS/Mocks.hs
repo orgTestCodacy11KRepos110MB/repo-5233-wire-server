@@ -22,6 +22,7 @@ module API.MLS.Mocks
     sendMessageMock,
     claimKeyPackagesMock,
     queryGroupStateMock,
+    deleteMLSConvMock,
   )
 where
 
@@ -69,3 +70,6 @@ queryGroupStateMock gs qusr = do
     if uid == qUnqualified qusr
       then GetGroupInfoResponseState (Base64ByteString gs)
       else GetGroupInfoResponseError ConvNotFound
+
+deleteMLSConvMock :: Mock LByteString
+deleteMLSConvMock = "on-delete-mls-conversation" ~> EmptyResponse

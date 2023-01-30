@@ -2451,7 +2451,7 @@ testRemoteMemberGetSubConv isAMember = do
     expectSubConvError _errExpected (GetSubConversationsResponseSuccess _) = liftIO $ assertFailure "Unexpected GetSubConversationsResponseSuccess"
     expectSubConvError errExpected (GetSubConversationsResponseError err) = liftIO $ err @?= errExpected
 
-testRemoteMemberDeleteSubConv :: Bool -> TestM ()
+testRemoteMemberDeleteSubConv :: HasCallStack => Bool -> TestM ()
 testRemoteMemberDeleteSubConv isAMember = do
   -- alice is local, bob is remote
   -- alice creates a local conversation and invites bob
@@ -2487,11 +2487,22 @@ testRemoteMemberDeleteSubConv isAMember = do
             dscreqEpoch = epoch
           }
 
-  fedGalleyClient <- view tsFedGalleyClient
   -- Bob is a member of the parent conversation so he's allowed to delete the
   -- subconversation.
-  res <-
-    runFedClient @"delete-sub-conversation" fedGalleyClient bobDomain delReq
+  (res, fedRequests) <-
+    withTempMockFederator' deleteMLSConvMock $ do
+      fedGalleyClient <- view tsFedGalleyClient
+      runFedClient @"delete-sub-conversation" fedGalleyClient bobDomain delReq
+
+  when isAMember $ do
+    fr <- assertOne fedRequests
+    liftIO $ do
+      frTargetDomain fr @?= bobDomain
+      frRPC fr @?= "on-delete-mls-conversation"
+      bdy <- case Aeson.eitherDecode (frBody fr) of
+        Right b -> pure b
+        Left e -> assertFailure $ "Could not parse delete-sub-conversation request body: " <> e
+      odmcGroupIds bdy @?= [groupId]
 
   if isAMember then expectSuccess res else expectFailure ConvNotFound res
   where
@@ -2596,7 +2607,7 @@ testDeleteParentOfSubConv = do
     pure qcnv
 
   -- DB clean up can't be tested from API calls alone
-  -- But this at least tests the clean up db calls don't crash
+  -- But this at least tests the clean up db calls don't fail
   deleteTeamConv tid (qUnqualified qcnv) (qUnqualified alice)
     !!! const 200
       === statusCode
@@ -2606,7 +2617,8 @@ testDeleteParentOfSubConv = do
 
 testDeleteRemoteParentOfSubConv :: TestM ()
 testDeleteRemoteParentOfSubConv = do
-  error "TODO"
+  -- call federation endpoint
+  pure ()
 
 testDeleteRemoteSubConv :: Bool -> TestM ()
 testDeleteRemoteSubConv isAMember = do
