@@ -19,6 +19,7 @@
 
 module API.MLS (tests) where
 
+import API.MLS.Mocks
 import API.MLS.Util
 import API.Util
 import Bilge hiding (head)
@@ -61,7 +62,6 @@ import Wire.API.Conversation.Action
 import Wire.API.Conversation.Protocol
 import Wire.API.Conversation.Role
 import Wire.API.Error.Galley
-import Wire.API.Federation.API.Common
 import Wire.API.Federation.API.Galley
 import Wire.API.Internal.Notification (ntfPayload)
 import Wire.API.MLS.CipherSuite
@@ -75,7 +75,6 @@ import Wire.API.MLS.Welcome
 import Wire.API.Message
 import Wire.API.Routes.MultiTablePaging
 import Wire.API.Routes.Version
-import Wire.API.User.Client
 
 tests :: IO TestSetup -> TestTree
 tests s =
@@ -219,27 +218,34 @@ tests s =
             [ test s "get subconversation of MLS conv - 200" (testCreateSubConv True),
               test s "get subconversation of Proteus conv - 404" (testCreateSubConv False),
               test s "join subconversation with an external commit bundle" testJoinSubConv,
-              test s "join subconversation with a client that is not in the main conv" testJoinSubNonMemberClient,
-              test s "add another client to a subconversation" testAddClientSubConv,
+              test s "join subconversation with a client that is not in the parent conv" testJoinSubNonMemberClient,
+              test s "fail to add another client to a subconversation via internal commit" testAddClientSubConvFailure,
               test s "remove another client from a subconversation" testRemoveClientSubConv,
               test s "send an application message in a subconversation" testSendMessageSubConv,
-              test s "reset a subconversation" testDeleteSubConv,
+              test s "reset a subconversation" (testDeleteSubConv True),
               test s "fail to reset a subconversation with wrong epoch" testDeleteSubConvStale,
               test s "remove user from parent conversation" testRemoveUserParent,
               test s "remove creator from parent conversation" testRemoveCreatorParent,
-              test s "creator removes user from parent conversation" testCreatorRemovesUserFromParent
+              test s "creator removes user from parent conversation" testCreatorRemovesUserFromParent,
+              test s "reset a subconversation as a member" (testDeleteSubConv True),
+              test s "reset a subconversation as a non-member" (testDeleteSubConv False),
+              test s "fail to reset a subconversation with wrong epoch" testDeleteSubConvStale
             ],
           testGroup
             "Local Sender/Remote Subconversation"
             [ test s "get subconversation of remote conversation - member" (testGetRemoteSubConv True),
               test s "get subconversation of remote conversation - not member" (testGetRemoteSubConv False),
-              test s "join remote subconversation" testJoinRemoteSubConv
+              test s "join remote subconversation" testJoinRemoteSubConv,
+              test s "reset a subconversation - member" (testDeleteRemoteSubConv True),
+              test s "reset a subconversation - not member" (testDeleteRemoteSubConv False)
             ],
           testGroup
             "Remote Sender/Local SubConversation"
             [ test s "get subconversation as a remote member" (testRemoteMemberGetSubConv True),
               test s "get subconversation as a remote non-member" (testRemoteMemberGetSubConv False),
-              test s "client of a remote user joins subconversation" testRemoteUserJoinSubConv
+              test s "client of a remote user joins subconversation" testRemoteUserJoinSubConv,
+              test s "delete subconversation as a remote member" (testRemoteMemberDeleteSubConv True),
+              test s "delete subconversation as a remote non-member" (testRemoteMemberDeleteSubConv False)
             ]
         ]
     ]
@@ -272,8 +278,8 @@ postMLSConvOk = do
     pure rsp !!! do
       const 201 === statusCode
       const Nothing === fmap Wai.label . responseJsonError
-    cid <- assertConv rsp RegularConv alice qalice [] (Just nameMaxSize) Nothing
-    checkConvCreateEvent cid wsA
+    qcid <- assertConv rsp RegularConv alice qalice [] (Just nameMaxSize) Nothing
+    checkConvCreateEvent (qUnqualified qcid) wsA
 
 testSenderNotInConversation :: TestM ()
 testSenderNotInConversation = do
@@ -350,11 +356,6 @@ testRemoteWelcome :: TestM ()
 testRemoteWelcome = do
   [alice, bob] <- createAndConnectUsers [Nothing, Just "bob.example.com"]
 
-  let mockedResponse fedReq =
-        case frRPC fedReq of
-          "mls-welcome" -> pure (Aeson.encode MLSWelcomeSent)
-          ms -> assertFailure ("unmocked endpoint called: " <> cs ms)
-
   runMLSTest $ do
     alice1 <- createMLSClient alice
     _bob1 <- createFakeMLSClient bob
@@ -365,7 +366,7 @@ testRemoteWelcome = do
       Nothing -> assertFailure "Expected welcome message"
       Just w -> pure w
     (_, reqs) <-
-      withTempMockFederator' mockedResponse $
+      withTempMockFederator' welcomeMock $
         postWelcome (ciUser (mpSender commit)) welcome
           !!! const 201 === statusCode
     consumeWelcome welcome
@@ -667,21 +668,9 @@ testAddRemoteUser = do
     [alice1, bob1] <- traverse createMLSClient users
     (_, qcnv) <- setupMLSGroup alice1
 
-    let mock req = case frRPC req of
-          "on-conversation-updated" -> pure (Aeson.encode ())
-          "on-new-remote-conversation" -> pure (Aeson.encode EmptyResponse)
-          "get-mls-clients" ->
-            pure
-              . Aeson.encode
-              . Set.fromList
-              . map (flip ClientInfo True . ciClient)
-              $ [bob1]
-          "mls-welcome" -> pure (Aeson.encode MLSWelcomeSent)
-          ms -> assertFailure ("unmocked endpoint called: " <> cs ms)
-
     commit <- createAddCommit alice1 [bob]
     (events, reqs) <-
-      withTempMockFederator' mock $
+      withTempMockFederator' (receiveCommitMock [bob1] <|> welcomeMock) $
         sendAndConsumeCommit commit
     pure (events, reqs, qcnv)
 
@@ -862,17 +851,7 @@ testRemoteAppMessage = do
 
     (_, qcnv) <- setupMLSGroup alice1
 
-    let mock req = case frRPC req of
-          "on-conversation-updated" -> pure (Aeson.encode ())
-          "on-new-remote-conversation" -> pure (Aeson.encode EmptyResponse)
-          "on-mls-message-sent" -> pure (Aeson.encode RemoteMLSMessageOk)
-          "mls-welcome" -> pure (Aeson.encode MLSWelcomeSent)
-          "get-mls-clients" ->
-            pure
-              . Aeson.encode
-              . Set.singleton
-              $ ClientInfo (ciClient bob1) True
-          ms -> assertFailure ("unmocked endpoint called: " <> cs ms)
+    let mock = receiveCommitMock [bob1] <|> messageSentMock <|> welcomeMock
 
     ((message, events), reqs) <- withTempMockFederator' mock $ do
       void $ createAddCommit alice1 [bob] >>= sendAndConsumeCommit
@@ -947,12 +926,8 @@ testLocalToRemote = do
     -- A notifies B about bob being in the conversation (Join event): step 5
     receiveOnConvUpdated qcnv alice bob
 
-    let mock req = case frRPC req of
-          "send-mls-message" -> pure (Aeson.encode (MLSMessageResponseUpdates []))
-          rpc -> assertFailure $ "unmocked RPC called: " <> T.unpack rpc
-
     (_, reqs) <-
-      withTempMockFederator' mock $
+      withTempMockFederator' sendMessageMock $
         -- bob sends a message: step 12
         sendAndConsumeMessage message
 
@@ -991,12 +966,8 @@ testLocalToRemoteNonMember = do
     -- register remote conversation: step 4
     receiveNewRemoteConv qcnv groupId
 
-    let mock req = case frRPC req of
-          "send-mls-message" -> pure (Aeson.encode (MLSMessageResponseUpdates []))
-          rpc -> assertFailure $ "unmocked RPC called: " <> T.unpack rpc
-
     void $
-      withTempMockFederator' mock $ do
+      withTempMockFederator' sendMessageMock $ do
         galley <- viewGalley
 
         -- bob sends a message: step 12
@@ -1254,20 +1225,8 @@ testRemoteToLocal = do
     kpb <- claimKeyPackages alice1 bob
     mp <- createAddCommit alice1 [bob]
 
-    let mockedResponse fedReq =
-          case frRPC fedReq of
-            "mls-welcome" -> pure (Aeson.encode MLSWelcomeSent)
-            "on-new-remote-conversation" -> pure (Aeson.encode EmptyResponse)
-            "on-conversation-updated" -> pure (Aeson.encode ())
-            "get-mls-clients" ->
-              pure
-                . Aeson.encode
-                . Set.singleton
-                $ ClientInfo (ciClient bob1) True
-            "claim-key-packages" -> pure . Aeson.encode $ kpb
-            ms -> assertFailure ("unmocked endpoint called: " <> cs ms)
-
-    void . withTempMockFederator' mockedResponse $
+    let mock = receiveCommitMock [bob1] <|> welcomeMock <|> claimKeyPackagesMock kpb
+    void . withTempMockFederator' mock $
       sendAndConsumeCommit mp
 
     traverse_ consumeWelcome (mpWelcome mp)
@@ -1312,19 +1271,8 @@ testRemoteToLocalWrongConversation = do
     void $ setupMLSGroup alice1
     mp <- createAddCommit alice1 [bob]
 
-    let mockedResponse fedReq =
-          case frRPC fedReq of
-            "mls-welcome" -> pure (Aeson.encode MLSWelcomeSent)
-            "on-new-remote-conversation" -> pure (Aeson.encode EmptyResponse)
-            "on-conversation-updated" -> pure (Aeson.encode ())
-            "get-mls-clients" ->
-              pure
-                . Aeson.encode
-                . Set.singleton
-                $ ClientInfo (ciClient bob1) True
-            ms -> assertFailure ("unmocked endpoint called: " <> cs ms)
-
-    void . withTempMockFederator' mockedResponse $ sendAndConsumeCommit mp
+    let mock = receiveCommitMock [bob1] <|> welcomeMock
+    void . withTempMockFederator' mock $ sendAndConsumeCommit mp
     traverse_ consumeWelcome (mpWelcome mp)
     message <- createApplicationMessage bob1 "hello from another backend"
 
@@ -1682,19 +1630,7 @@ testBackendRemoveProposalLocalConvRemoteUser = do
     (_, qcnv) <- setupMLSGroup alice1
     commit <- createAddCommit alice1 [bob]
 
-    let mock req = case frRPC req of
-          "on-conversation-updated" -> pure (Aeson.encode ())
-          "on-new-remote-conversation" -> pure (Aeson.encode EmptyResponse)
-          "on-mls-message-sent" -> pure (Aeson.encode RemoteMLSMessageOk)
-          "mls-welcome" -> pure (Aeson.encode MLSWelcomeSent)
-          "get-mls-clients" ->
-            pure
-              . Aeson.encode
-              . Set.fromList
-              . map (flip ClientInfo True . ciClient)
-              $ [bob1, bob2]
-          ms -> assertFailure ("unmocked endpoint called: " <> cs ms)
-
+    let mock = receiveCommitMock [bob1, bob2] <|> welcomeMock <|> messageSentMock
     void . withTempMockFederator' mock $ do
       mlsBracket [alice1] $ \[wsA] -> do
         void $ sendAndConsumeCommit commit
@@ -1859,19 +1795,7 @@ testBackendRemoveProposalLocalConvRemoteLeaver = do
     (_, qcnv) <- setupMLSGroup alice1
     commit <- createAddCommit alice1 [bob]
 
-    let mock req = case frRPC req of
-          "on-conversation-updated" -> pure (Aeson.encode ())
-          "on-new-remote-conversation" -> pure (Aeson.encode EmptyResponse)
-          "on-mls-message-sent" -> pure (Aeson.encode RemoteMLSMessageOk)
-          "mls-welcome" -> pure (Aeson.encode MLSWelcomeSent)
-          "get-mls-clients" ->
-            pure
-              . Aeson.encode
-              . Set.fromList
-              . map (flip ClientInfo True . ciClient)
-              $ [bob1, bob2]
-          ms -> assertFailure ("unmocked endpoint called: " <> cs ms)
-
+    let mock = receiveCommitMock [bob1, bob2] <|> welcomeMock <|> messageSentMock
     bobClients <- getClientsFromGroupState alice1 bob
     void . withTempMockFederator' mock $ do
       mlsBracket [alice1] $ \[wsA] -> void $ do
@@ -1935,21 +1859,8 @@ testBackendRemoveProposalLocalConvRemoteClient = do
     (_, qcnv) <- setupMLSGroup alice1
     commit <- createAddCommit alice1 [bob]
 
-    let mock req = case frRPC req of
-          "on-conversation-updated" -> pure (Aeson.encode ())
-          "on-new-remote-conversation" -> pure (Aeson.encode EmptyResponse)
-          "mls-welcome" -> pure (Aeson.encode MLSWelcomeSent)
-          "on-mls-message-sent" -> pure (Aeson.encode RemoteMLSMessageOk)
-          "get-mls-clients" ->
-            pure
-              . Aeson.encode
-              . Set.fromList
-              . map (flip ClientInfo True)
-              $ [ciClient bob1]
-          ms -> assertFailure ("unmocked endpoint called: " <> cs ms)
-
     [(_, bob1KP)] <- getClientsFromGroupState alice1 bob
-
+    let mock = receiveCommitMock [bob1] <|> welcomeMock <|> messageSentMock
     void . withTempMockFederator' mock $ do
       mlsBracket [alice1] $ \[wsA] -> void $ do
         void $ sendAndConsumeCommit commit
@@ -2003,16 +1914,7 @@ testGetGroupInfoOfRemoteConv = do
     receiveOnConvUpdated qcnv alice bob
 
     let fakeGroupState = "\xde\xad\xbe\xef"
-    let mock req = case frRPC req of
-          "query-group-info" -> do
-            request <- either (assertFailure . ("Parse failure in query-group-info " <>)) pure (Aeson.eitherDecode (frBody req))
-            let uid = ggireqSender request
-            pure . Aeson.encode $
-              if uid == qUnqualified bob
-                then GetGroupInfoResponseState (Base64ByteString fakeGroupState)
-                else GetGroupInfoResponseError ConvNotFound
-          s -> error ("unmocked: " <> T.unpack s)
-
+    let mock = queryGroupStateMock fakeGroupState bob
     (_, reqs) <- withTempMockFederator' mock $ do
       res <-
         fmap responseBody $
@@ -2040,18 +1942,7 @@ testFederatedGetGroupInfo = do
     commit <- createAddCommit alice1 [bob]
     groupState <- assertJust (mpPublicGroupState commit)
 
-    let mock req = case frRPC req of
-          "on-new-remote-conversation" -> pure (Aeson.encode EmptyResponse)
-          "on-conversation-updated" -> pure (Aeson.encode ())
-          "mls-welcome" -> pure (Aeson.encode MLSWelcomeSent)
-          "get-mls-clients" ->
-            pure
-              . Aeson.encode
-              . Set.fromList
-              . map (flip ClientInfo True)
-              $ [ciClient bob1]
-          ms -> assertFailure ("unmocked endpoint called: " <> cs ms)
-
+    let mock = receiveCommitMock [bob1] <|> welcomeMock
     void . withTempMockFederator' mock $ do
       void $ sendAndConsumeCommitBundle commit
 
@@ -2126,9 +2017,7 @@ testAddUserToRemoteConvWithBundle = do
     commit <- createAddCommit bob1 [charlie]
     commitBundle <- createBundle commit
 
-    let mock req = case frRPC req of
-          "send-mls-commit-bundle" -> pure (Aeson.encode (MLSMessageResponseUpdates []))
-          s -> error ("unmocked: " <> T.unpack s)
+    let mock = "send-mls-commit-bundle" ~> MLSMessageResponseUpdates []
     (_, reqs) <- withTempMockFederator' mock $ do
       void $ sendAndConsumeCommitBundle commit
 
@@ -2155,20 +2044,9 @@ testRemoteUserPostsCommitBundle = do
     [alice1, bob1] <- traverse createMLSClient [alice, bob]
     (_, qcnv) <- setupMLSGroup alice1
 
-    let mock req = case frRPC req of
-          "on-conversation-updated" -> pure (Aeson.encode ())
-          "on-new-remote-conversation" -> pure (Aeson.encode EmptyResponse)
-          "get-mls-clients" ->
-            pure
-              . Aeson.encode
-              . Set.fromList
-              . map (flip ClientInfo True . ciClient)
-              $ [bob1]
-          "mls-welcome" -> pure (Aeson.encode MLSWelcomeSent)
-          ms -> assertFailure ("unmocked endpoint called: " <> cs ms)
-
     commit <- createAddCommit alice1 [bob]
-    void $
+    void $ do
+      let mock = receiveCommitMock [bob1] <|> welcomeMock
       withTempMockFederator' mock $ do
         void $ sendAndConsumeCommit commit
         putOtherMemberQualified (qUnqualified alice) bob (OtherMemberUpdate (Just roleNameWireAdmin)) qcnv
@@ -2349,10 +2227,22 @@ testCreateSubConv parentIsMLSConv = do
           cnvQualifiedId
             <$> liftTest (postConvQualified (qUnqualified alice) defNewProteusConv >>= responseJsonError)
     let sconv = SubConvId "conference"
-    liftTest $
-      getSubConv (qUnqualified alice) qcnv sconv
-        !!! do
-          const (if parentIsMLSConv then 200 else 404) === statusCode
+    if parentIsMLSConv
+      then do
+        sub <-
+          liftTest $
+            responseJsonError
+              =<< getSubConv (qUnqualified alice) qcnv sconv
+                <!! const 200 === statusCode
+        liftIO $
+          assertEqual
+            "The epoch timestamp is not null"
+            Nothing
+            (pscEpochTimestamp sub)
+      else
+        liftTest $
+          getSubConv (qUnqualified alice) qcnv sconv
+            !!! const 404 === statusCode
 
 testJoinSubConv :: TestM ()
 testJoinSubConv = do
@@ -2369,7 +2259,7 @@ testJoinSubConv = do
       sub <-
         liftTest $
           responseJsonError
-            =<< getSubConv (qUnqualified bob) qcnv (SubConvId "conference")
+            =<< getSubConv (qUnqualified bob) qcnv subId
               <!! const 200 === statusCode
 
       resetGroup bob1 (pscGroupId sub)
@@ -2378,24 +2268,82 @@ testJoinSubConv = do
       -- bob adds his first client to the subconversation
       void $
         createPendingProposalCommit bob1 >>= sendAndConsumeCommitBundle
+      subAfter <-
+        liftTest $
+          responseJsonError
+            =<< getSubConv (qUnqualified bob) qcnv subId
+              <!! const 200 === statusCode
       bobRefsAfter <- getClientsFromGroupState bob1 bob
-      liftIO $
+      liftIO $ do
         assertBool
           "Bob's key package has not been updated via the update path"
           (bobRefsBefore /= bobRefsAfter)
+        assertBool
+          "The epoch timestamp is null"
+          (isJust (pscEpochTimestamp subAfter))
 
       -- now alice joins with her own client
       void $
         createExternalCommit alice1 Nothing (fmap (flip SubConv subId) qcnv)
           >>= sendAndConsumeCommitBundle
 
--- FUTUREWORK: implement the following tests
-
 testJoinSubNonMemberClient :: TestM ()
-testJoinSubNonMemberClient = pure ()
+testJoinSubNonMemberClient = do
+  [alice, bob] <- createAndConnectUsers [Nothing, Nothing]
 
-testAddClientSubConv :: TestM ()
-testAddClientSubConv = pure ()
+  runMLSTest $ do
+    [alice1, alice2, bob1] <-
+      traverse createMLSClient [alice, alice, bob]
+    traverse_ uploadNewKeyPackage [bob1, alice2]
+    (_, qcnv) <- setupMLSGroup alice1
+    void $ createAddCommit alice1 [alice] >>= sendAndConsumeCommit
+
+    let subId = SubConvId "conference"
+    void $ createSubConv qcnv alice1 subId
+
+    -- now Bob attempts to get the group info so he can join via external commit
+    -- with his own client, but he cannot because he is not a member of the
+    -- parent conversation
+    getGroupInfo (ciUser bob1) (fmap (flip SubConv subId) qcnv)
+      !!! const 404 === statusCode
+
+testAddClientSubConvFailure :: TestM ()
+testAddClientSubConvFailure = do
+  [alice, bob] <- createAndConnectUsers [Nothing, Nothing]
+  runMLSTest $ do
+    [alice1, bob1] <- traverse createMLSClient [alice, bob]
+    void $ uploadNewKeyPackage bob1
+    (_, qcnv) <- setupMLSGroup alice1
+    void $ createAddCommit alice1 [bob] >>= sendAndConsumeCommit
+
+    let subId = SubConvId "conference"
+    void $ createSubConv qcnv alice1 subId
+
+    void $ uploadNewKeyPackage bob1
+
+    commit <- createAddCommit alice1 [bob]
+    (createBundle commit >>= postCommitBundle (mpSender commit))
+      !!! do
+        const 400 === statusCode
+        const (Just "Add proposals in subconversations are not supported")
+          === fmap Wai.message . responseJsonError
+
+    finalSub <-
+      liftTest $
+        responseJsonError
+          =<< getSubConv (qUnqualified alice) qcnv subId
+            <!! const 200 === statusCode
+    liftIO $ do
+      assertEqual
+        "The subconversation has Bob in it, while it shouldn't"
+        [alice1]
+        (pscMembers finalSub)
+      assertEqual
+        "The subconversation epoch has moved beyond 1"
+        (Epoch 1)
+        (pscEpoch finalSub)
+
+-- FUTUREWORK: implement the following tests
 
 testRemoveClientSubConv :: TestM ()
 testRemoveClientSubConv = pure ()
@@ -2417,9 +2365,9 @@ testSendMessageSubConv = do
       (_, qcnv) <- setupMLSGroup alice1
       void $ createAddCommit alice1 [bob] >>= sendAndConsumeCommit
 
-      let subname = "conference"
-      createSubConv qcnv bob1 subname
-      let qcs = convsub qcnv (Just subname)
+      let subId = SubConvId "conference"
+      void $ createSubConv qcnv bob1 subId
+      let qcs = convsub qcnv (Just subId)
 
       void $ createExternalCommit alice1 Nothing qcs >>= sendAndConsumeCommitBundle
       void $ createExternalCommit bob2 Nothing qcs >>= sendAndConsumeCommitBundle
@@ -2445,18 +2393,16 @@ testGetRemoteSubConv isAMember = do
             pscSubConvId = sconv,
             pscGroupId = GroupId "deadbeef",
             pscEpoch = Epoch 0,
+            pscEpochTimestamp = Nothing,
             pscCipherSuite = MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519,
             pscMembers = []
           }
-
-  let mock req = case frRPC req of
-        "get-sub-conversation" ->
-          pure $
-            if isAMember
-              then Aeson.encode (GetSubConversationsResponseSuccess fakeSubConv)
-              else Aeson.encode (GetSubConversationsResponseError ConvNotFound)
-        rpc -> assertFailure $ "unmocked RPC called: " <> T.unpack rpc
-
+  let mock = do
+        guardRPC "get-sub-conversation"
+        mockReply $
+          if isAMember
+            then GetSubConversationsResponseSuccess fakeSubConv
+            else GetSubConversationsResponseError ConvNotFound
   (_, reqs) <-
     withTempMockFederator' mock $
       getSubConv (qUnqualified alice) qconv sconv
@@ -2483,20 +2429,8 @@ testRemoteMemberGetSubConv isAMember = do
     kpb <- claimKeyPackages alice1 bob
     mp <- createAddCommit alice1 [bob]
 
-    let mockedResponse fedReq =
-          case frRPC fedReq of
-            "mls-welcome" -> pure (Aeson.encode MLSWelcomeSent)
-            "on-new-remote-conversation" -> pure (Aeson.encode EmptyResponse)
-            "on-conversation-updated" -> pure (Aeson.encode ())
-            "get-mls-clients" ->
-              pure
-                . Aeson.encode
-                . Set.singleton
-                $ ClientInfo (ciClient bob1) True
-            "claim-key-packages" -> pure . Aeson.encode $ kpb
-            ms -> assertFailure ("unmocked endpoint called: " <> cs ms)
-
-    void . withTempMockFederator' mockedResponse $
+    let mock = receiveCommitMock [bob1] <|> welcomeMock <|> claimKeyPackagesMock kpb
+    void . withTempMockFederator' mock $
       sendAndConsumeCommit mp
 
     let subconv = SubConvId "conference"
@@ -2530,32 +2464,80 @@ testRemoteMemberGetSubConv isAMember = do
     expectSubConvError _errExpected (GetSubConversationsResponseSuccess _) = liftIO $ assertFailure "Unexpected GetSubConversationsResponseSuccess"
     expectSubConvError errExpected (GetSubConversationsResponseError err) = liftIO $ err @?= errExpected
 
-testDeleteSubConv :: TestM ()
-testDeleteSubConv = do
+testRemoteMemberDeleteSubConv :: Bool -> TestM ()
+testRemoteMemberDeleteSubConv isAMember = do
+  -- alice is local, bob is remote
+  -- alice creates a local conversation and invites bob
+  -- bob deletes a subconversation via federated enpdoint
+
+  let bobDomain = Domain "faraway.example.com"
+      scnv = SubConvId "conference"
+  [alice, bob] <- createAndConnectUsers [Nothing, Just (domainText bobDomain)]
+
+  (cnv, groupId, epoch) <- runMLSTest $ do
+    [alice1, bob1] <- traverse createMLSClient [alice, bob]
+    (_cnvGroupId, qcnv) <- setupMLSGroup alice1
+    mp <- createAddCommit alice1 [bob]
+
+    let mock = receiveCommitMock [bob1] <|> welcomeMock
+    void . withTempMockFederator' mock . sendAndConsumeCommit $ mp
+
+    sub <-
+      liftTest $
+        responseJsonError
+          =<< getSubConv (qUnqualified alice) qcnv scnv
+    resetGroup alice1 (pscGroupId sub)
+
+    pure (qUnqualified qcnv, pscGroupId sub, pscEpoch sub)
+
+  randUser <- randomId
+  let delReq =
+        DeleteSubConversationRequest
+          { dscreqUser = if isAMember then qUnqualified bob else randUser,
+            dscreqConv = cnv,
+            dscreqSubConv = scnv,
+            dscreqGroupId = groupId,
+            dscreqEpoch = epoch
+          }
+
+  fedGalleyClient <- view tsFedGalleyClient
+  -- Bob is a member of the parent conversation so he's allowed to delete the
+  -- subconversation.
+  res <-
+    runFedClient @"delete-sub-conversation" fedGalleyClient bobDomain delReq
+
+  if isAMember then expectSuccess res else expectFailure ConvNotFound res
+  where
+    expectSuccess :: DeleteSubConversationResponse -> TestM ()
+    expectSuccess DeleteSubConversationResponseSuccess = pure ()
+    expectSuccess (DeleteSubConversationResponseError err) =
+      liftIO . assertFailure $
+        "Unexpected DeleteSubConversationResponseError: " <> show err
+
+    expectFailure :: GalleyError -> DeleteSubConversationResponse -> TestM ()
+    expectFailure _errExpected DeleteSubConversationResponseSuccess =
+      liftIO . assertFailure $
+        "Unexpected DeleteSubConversationResponseSuccess"
+    expectFailure errExpected (DeleteSubConversationResponseError err) =
+      liftIO $ err @?= errExpected
+
+testDeleteSubConv :: Bool -> TestM ()
+testDeleteSubConv isAMember = do
   alice <- randomQualifiedUser
+  randUser <- randomId
+  let (deleter, expectedCode) =
+        if isAMember
+          then (qUnqualified alice, 200)
+          else (randUser, 403)
   let sconv = SubConvId "conference"
   (qcnv, sub) <- runMLSTest $ do
     alice1 <- createMLSClient alice
     (_, qcnv) <- setupMLSGroup alice1
-    sub <-
-      liftTest $
-        responseJsonError
-          =<< getSubConv (qUnqualified alice) qcnv sconv
-            <!! do const 200 === statusCode
-
-    resetGroup alice1 (pscGroupId sub)
-
-    void $
-      createPendingProposalCommit alice1 >>= sendAndConsumeCommitBundle
+    sub <- createSubConv qcnv alice1 sconv
     pure (qcnv, sub)
 
-  let epoch = addToEpoch @Word64 1 $ pscEpoch sub
-      dsc =
-        DeleteSubConversation
-          (pscGroupId sub)
-          epoch
-  deleteSubConv (qUnqualified alice) qcnv sconv dsc
-    !!! do const 200 === statusCode
+  let dsc = DeleteSubConversation (pscGroupId sub) (pscEpoch sub)
+  deleteSubConv deleter qcnv sconv dsc !!! const expectedCode === statusCode
 
   newSub <-
     responseJsonError
@@ -2563,7 +2545,15 @@ testDeleteSubConv = do
         <!! do const 200 === statusCode
 
   liftIO $
-    assertBool "Old and new subconversation are equal" (sub /= newSub)
+    if isAMember
+      then
+        assertBool
+          "Old and new subconversation are equal"
+          (sub /= newSub)
+      else
+        assertBool
+          "Old and new subconversation are not equal"
+          (sub == newSub)
 
 testDeleteSubConvStale :: TestM ()
 testDeleteSubConvStale = do
@@ -2603,8 +2593,8 @@ testRemoveUserParent = do
       (_, qcnv) <- setupMLSGroup alice1
       void $ createAddCommit alice1 [bob, charlie] >>= sendAndConsumeCommit
 
-      let subname = "conference"
-      createSubConv qcnv bob1 subname
+      let subname = SubConvId "conference"
+      void $ createSubConv qcnv bob1 subname
       let qcs = convsub qcnv (Just subname)
 
       -- all clients join
@@ -2665,8 +2655,8 @@ testRemoveCreatorParent = do
       (_, qcnv) <- setupMLSGroup alice1
       void $ createAddCommit alice1 [bob, charlie] >>= sendAndConsumeCommit
 
-      let subname = "conference"
-      createSubConv qcnv alice1 subname
+      let subname = SubConvId "conference"
+      void $ createSubConv qcnv alice1 subname
       let qcs = convsub qcnv (Just subname)
 
       -- all clients join
@@ -2736,8 +2726,8 @@ testCreatorRemovesUserFromParent = do
 
       -- fork here, so changes outside of this block still apply to parent
       subConvState <- forkMLSTest $ do
-        let subname = "conference"
-        createSubConv qcnv alice1 subname
+        let subname = SubConvId "conference"
+        void $ createSubConv qcnv alice1 subname
         let qcs = convsub qcnv (Just subname)
 
         -- all clients join
@@ -2803,3 +2793,38 @@ testCreatorRemovesUserFromParent = do
 --     )
 --     (sort [alice1, charlie1, charlie2])
 --     (sort $ pscMembers sub1)
+
+testDeleteRemoteSubConv :: Bool -> TestM ()
+testDeleteRemoteSubConv isAMember = do
+  alice <- randomQualifiedUser
+  let remoteDomain = Domain "faraway.example.com"
+  conv <- randomId
+  let qconv = Qualified conv remoteDomain
+      sconv = SubConvId "conference"
+      groupId = GroupId "deadbeef"
+      epoch = Epoch 0
+      expectedReq =
+        DeleteSubConversationRequest
+          { dscreqUser = qUnqualified alice,
+            dscreqConv = conv,
+            dscreqSubConv = sconv,
+            dscreqGroupId = groupId,
+            dscreqEpoch = epoch
+          }
+
+  let mock = do
+        guardRPC "delete-sub-conversation"
+        mockReply $
+          if isAMember
+            then DeleteSubConversationResponseSuccess
+            else DeleteSubConversationResponseError ConvNotFound
+      dsc = DeleteSubConversation groupId epoch
+
+  (_, reqs) <-
+    withTempMockFederator' mock $
+      deleteSubConv (qUnqualified alice) qconv sconv dsc
+        <!! const (if isAMember then 200 else 404) === statusCode
+  actualReq <- assertOne (filter ((== "delete-sub-conversation") . frRPC) reqs)
+  let req :: Maybe DeleteSubConversationRequest =
+        Aeson.decode (frBody actualReq)
+  liftIO $ req @?= Just expectedReq

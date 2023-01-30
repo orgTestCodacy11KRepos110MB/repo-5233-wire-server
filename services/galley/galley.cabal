@@ -263,6 +263,7 @@ library
     , servant-swagger
     , servant-swagger-ui
     , singletons
+    , singletons-th
     , sop-core
     , split                      >=0.2
     , ssl-util                   >=0.1
@@ -381,6 +382,7 @@ executable galley-integration
     API.Federation.Util
     API.MessageTimer
     API.MLS
+    API.MLS.Mocks
     API.MLS.Util
     API.Roles
     API.SQS
@@ -511,6 +513,7 @@ executable galley-integration
     , servant-server
     , servant-swagger
     , singletons
+    , singletons-th
     , sop-core
     , ssl-util
     , string-conversions
@@ -839,6 +842,8 @@ test-suite galley-tests
     , http-types
     , imports
     , lens
+    , polysemy
+    , polysemy-wire-zoo
     , QuickCheck
     , raw-strings-qq       >=1.0
     , safe                 >=0.3

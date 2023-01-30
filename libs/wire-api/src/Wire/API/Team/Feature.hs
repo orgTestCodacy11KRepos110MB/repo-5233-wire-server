@@ -77,10 +77,6 @@ module Wire.API.Team.Feature
     MLSConfig (..),
     AllFeatureConfigs (..),
     typeFeatureTTL,
-    withStatusModel,
-    withStatusNoLockModel,
-    allFeatureModels,
-    typeFeatureStatus,
     unImplicitLockStatus,
     ImplicitLockStatus (..),
   )
@@ -96,6 +92,7 @@ import qualified Data.ByteString.UTF8 as UTF8
 import Data.Domain (Domain)
 import Data.Either.Extra (maybeToEither)
 import Data.Id
+import Data.Kind
 import Data.Proxy
 import Data.Schema
 import Data.Scientific (toBoundedInteger)
@@ -159,10 +156,6 @@ class IsFeatureConfig cfg where
   type FeatureSymbol cfg :: Symbol
   defFeatureStatus :: WithStatus cfg
 
-  -- | Swagger 1.2 model for stern and wai routes
-  configModel :: Maybe Doc.Model
-  configModel = Nothing
-
   objectSchema ::
     -- | Should be "pure MyFeatureConfig" if the feature doesn't have config,
     -- which results in a trivial empty schema and the "config" field being
@@ -184,7 +177,7 @@ featureNameBS = UTF8.fromString $ symbolVal (Proxy @(FeatureSymbol cfg))
 ----------------------------------------------------------------------
 -- WithStatusBase
 
-data WithStatusBase (m :: * -> *) (cfg :: *) = WithStatusBase
+data WithStatusBase (m :: Type -> Type) (cfg :: Type) = WithStatusBase
   { wsbStatus :: m FeatureStatus,
     wsbLockStatus :: m LockStatus,
     wsbConfig :: m cfg,
@@ -223,7 +216,7 @@ setConfig c (WithStatusBase s ls _ ttl) = WithStatusBase s ls (Identity c) ttl
 setWsTTL :: FeatureTTL -> WithStatus cfg -> WithStatus cfg
 setWsTTL ttl (WithStatusBase s ls c _) = WithStatusBase s ls c (Identity ttl)
 
-type WithStatus (cfg :: *) = WithStatusBase Identity cfg
+type WithStatus (cfg :: Type) = WithStatusBase Identity cfg
 
 deriving instance (Eq cfg) => Eq (WithStatus cfg)
 
@@ -250,24 +243,10 @@ instance (ToSchema cfg, IsFeatureConfig cfg) => ToSchema (WithStatus cfg) where
 instance (Arbitrary cfg, IsFeatureConfig cfg) => Arbitrary (WithStatus cfg) where
   arbitrary = WithStatusBase <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
-withStatusModel :: forall cfg. (IsFeatureConfig cfg, KnownSymbol (FeatureSymbol cfg)) => Doc.Model
-withStatusModel =
-  let name = featureName @cfg
-      mbModelCfg = configModel @cfg
-   in Doc.defineModel ("WithStatus." <> name) $ do
-        case mbModelCfg of
-          Nothing -> Doc.description $ "Team feature " <> name <> " that has no configuration beyond the boolean on/off switch."
-          Just modelCfg -> do
-            Doc.description $ "Status and config of " <> name
-            Doc.property "config" (Doc.ref modelCfg) $ Doc.description "config"
-
-        Doc.property "status" typeFeatureStatus $ Doc.description "status"
-        Doc.property "lockStatus" typeLockStatusValue $ Doc.description ""
-
 ----------------------------------------------------------------------
 -- WithStatusPatch
 
-type WithStatusPatch (cfg :: *) = WithStatusBase Maybe cfg
+type WithStatusPatch (cfg :: Type) = WithStatusBase Maybe cfg
 
 deriving instance (Eq cfg) => Eq (WithStatusPatch cfg)
 
@@ -325,7 +304,7 @@ instance (Arbitrary cfg, IsFeatureConfig cfg) => Arbitrary (WithStatusPatch cfg)
 -- if we switch to `unlocked`, we auto-enable the feature, and if we switch to locked, we
 -- auto-disable it.  But we need to change the API to force clients to use `lockStatus`
 -- instead of `status`, current behavior is just wrong.
-data WithStatusNoLock (cfg :: *) = WithStatusNoLock
+data WithStatusNoLock (cfg :: Type) = WithStatusNoLock
   { wssStatus :: FeatureStatus,
     wssConfig :: cfg,
     wssTTL :: FeatureTTL
@@ -358,19 +337,6 @@ instance (ToSchema cfg, IsFeatureConfig cfg) => ToSchema (WithStatusNoLock cfg) 
     where
       inner = schema @cfg
       name = fromMaybe "" (getName (schemaDoc inner)) <> ".WithStatusNoLock"
-
-withStatusNoLockModel :: forall cfg. (IsFeatureConfig cfg, KnownSymbol (FeatureSymbol cfg)) => Doc.Model
-withStatusNoLockModel =
-  let name = featureName @cfg
-      mbModelCfg = configModel @cfg
-   in Doc.defineModel ("WithStatusNoLock." <> name) $ do
-        case mbModelCfg of
-          Nothing -> Doc.description $ "Team feature " <> name <> " that has no configuration beyond the boolean on/off switch."
-          Just modelCfg -> do
-            Doc.description $ "Status and config of " <> name
-            Doc.property "config" (Doc.ref modelCfg) $ Doc.description "config"
-
-        Doc.property "status" typeFeatureStatus $ Doc.description "status"
 
 ----------------------------------------------------------------------
 -- FeatureTTL
@@ -491,14 +457,6 @@ data LockStatus = LockStatusLocked | LockStatusUnlocked
 instance FromHttpApiData LockStatus where
   parseUrlPiece = maybeToEither "Invalid lock status" . fromByteString . cs
 
-typeLockStatusValue :: Doc.DataType
-typeLockStatusValue =
-  Doc.string $
-    Doc.enum
-      [ "locked",
-        "unlocked"
-      ]
-
 instance ToSchema LockStatus where
   schema =
     enum @Text "LockStatus" $
@@ -543,7 +501,7 @@ instance ToSchema LockStatusResponse where
       LockStatusResponse
         <$> _unlockStatus .= field "lockStatus" schema
 
-newtype ImplicitLockStatus (cfg :: *) = ImplicitLockStatus {_unImplicitLockStatus :: WithStatus cfg}
+newtype ImplicitLockStatus (cfg :: Type) = ImplicitLockStatus {_unImplicitLockStatus :: WithStatus cfg}
   deriving newtype (Eq, Show, Arbitrary)
 
 instance (IsFeatureConfig a, ToSchema a) => ToJSON (ImplicitLockStatus a) where
@@ -564,57 +522,6 @@ computeFeatureConfigForTeamUser mStatusDb mLockStatusDb defStatus =
         Just fs -> fs
   where
     lockStatus = fromMaybe (wsLockStatus defStatus) mLockStatusDb
-
-allFeatureModels :: [Doc.Model]
-allFeatureModels =
-  [ withStatusNoLockModel @LegalholdConfig,
-    withStatusNoLockModel @SSOConfig,
-    withStatusNoLockModel @SearchVisibilityAvailableConfig,
-    withStatusNoLockModel @ValidateSAMLEmailsConfig,
-    withStatusNoLockModel @DigitalSignaturesConfig,
-    withStatusNoLockModel @AppLockConfig,
-    withStatusNoLockModel @FileSharingConfig,
-    withStatusNoLockModel @ClassifiedDomainsConfig,
-    withStatusNoLockModel @ConferenceCallingConfig,
-    withStatusNoLockModel @SelfDeletingMessagesConfig,
-    withStatusNoLockModel @GuestLinksConfig,
-    withStatusNoLockModel @SndFactorPasswordChallengeConfig,
-    withStatusNoLockModel @SearchVisibilityInboundConfig,
-    withStatusNoLockModel @MLSConfig,
-    withStatusNoLockModel @ExposeInvitationURLsToTeamAdminConfig,
-    withStatusModel @LegalholdConfig,
-    withStatusModel @SSOConfig,
-    withStatusModel @SearchVisibilityAvailableConfig,
-    withStatusModel @ValidateSAMLEmailsConfig,
-    withStatusModel @DigitalSignaturesConfig,
-    withStatusModel @AppLockConfig,
-    withStatusModel @FileSharingConfig,
-    withStatusModel @ClassifiedDomainsConfig,
-    withStatusModel @ConferenceCallingConfig,
-    withStatusModel @SelfDeletingMessagesConfig,
-    withStatusModel @GuestLinksConfig,
-    withStatusModel @SndFactorPasswordChallengeConfig,
-    withStatusModel @SearchVisibilityInboundConfig,
-    withStatusModel @MLSConfig,
-    withStatusModel @ExposeInvitationURLsToTeamAdminConfig
-  ]
-    <> catMaybes
-      [ configModel @LegalholdConfig,
-        configModel @SSOConfig,
-        configModel @SearchVisibilityAvailableConfig,
-        configModel @ValidateSAMLEmailsConfig,
-        configModel @DigitalSignaturesConfig,
-        configModel @AppLockConfig,
-        configModel @FileSharingConfig,
-        configModel @ClassifiedDomainsConfig,
-        configModel @ConferenceCallingConfig,
-        configModel @SelfDeletingMessagesConfig,
-        configModel @GuestLinksConfig,
-        configModel @SndFactorPasswordChallengeConfig,
-        configModel @SearchVisibilityInboundConfig,
-        configModel @MLSConfig,
-        configModel @ExposeInvitationURLsToTeamAdminConfig
-      ]
 
 --------------------------------------------------------------------------------
 -- GuestLinks feature
@@ -816,9 +723,6 @@ instance IsFeatureConfig ClassifiedDomainsConfig where
       LockStatusUnlocked
       (ClassifiedDomainsConfig [])
       FeatureTTLUnlimited
-  configModel = Just $
-    Doc.defineModel "ClassifiedDomainsConfig" $ do
-      Doc.property "domains" (Doc.array Doc.string') $ Doc.description "domains"
   objectSchema = field "config" schema
 
 ----------------------------------------------------------------------
@@ -848,10 +752,6 @@ instance IsFeatureConfig AppLockConfig where
       LockStatusUnlocked
       (AppLockConfig (EnforceAppLock False) 60)
       FeatureTTLUnlimited
-  configModel = Just $
-    Doc.defineModel "AppLockConfig" $ do
-      Doc.property "enforceAppLock" Doc.bool' $ Doc.description "enforceAppLock"
-      Doc.property "inactivityTimeoutSecs" Doc.int32' $ Doc.description ""
   objectSchema = field "config" schema
 
 newtype EnforceAppLock = EnforceAppLock Bool
@@ -904,9 +804,6 @@ instance IsFeatureConfig SelfDeletingMessagesConfig where
       LockStatusUnlocked
       (SelfDeletingMessagesConfig 0)
       FeatureTTLUnlimited
-  configModel = Just $
-    Doc.defineModel "SelfDeletingMessagesConfig" $ do
-      Doc.property "enforcedTimeoutSeconds" Doc.int32' $ Doc.description "optional; default: `0` (no enforcement)"
   objectSchema = field "config" schema
 
 ----------------------------------------------------------------------
@@ -936,13 +833,6 @@ instance IsFeatureConfig MLSConfig where
     let config = MLSConfig [] ProtocolProteusTag [MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519] MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519
      in withStatus FeatureStatusDisabled LockStatusUnlocked config FeatureTTLUnlimited
   objectSchema = field "config" schema
-
-  configModel = Just $
-    Doc.defineModel "MLSConfig" $ do
-      Doc.property "protocolToggleUsers" (Doc.array Doc.string') $ Doc.description "allowlist of users that may change protocols"
-      Doc.property "defaultProtocol" Doc.string' $ Doc.description "default protocol, either \"proteus\" or \"mls\""
-      Doc.property "allowedCipherSuites" (Doc.array Doc.int32') $ Doc.description "cipher suite numbers,  See https://messaginglayersecurity.rocks/mls-protocol/draft-ietf-mls-protocol.html#table-5"
-      Doc.property "defaultCipherSuite" Doc.int32' $ Doc.description "cipher suite number. See https://messaginglayersecurity.rocks/mls-protocol/draft-ietf-mls-protocol.html#table-5"
 
 ----------------------------------------------------------------------
 -- ExposeInvitationURLsToTeamAdminConfig
@@ -984,14 +874,6 @@ instance FromHttpApiData FeatureStatus where
 
 instance ToHttpApiData FeatureStatus where
   toUrlPiece = cs . toByteString'
-
-typeFeatureStatus :: Doc.DataType
-typeFeatureStatus =
-  Doc.string $
-    Doc.enum
-      [ "enabled",
-        "disabled"
-      ]
 
 instance ToSchema FeatureStatus where
   schema =

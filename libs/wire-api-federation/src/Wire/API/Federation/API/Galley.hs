@@ -133,6 +133,7 @@ type GalleyApi =
            "leave-sub-conversation"
            LeaveSubConversationRequest
            LeaveSubConversationResponse
+    :<|> FedEndpoint "delete-sub-conversation" DeleteSubConversationRequest DeleteSubConversationResponse
 
 data TypingDataUpdateRequest = TypingDataUpdateRequest
   { tdurTypingStatus :: TypingStatus,
@@ -456,3 +457,20 @@ data LeaveSubConversationResponse
   | LeaveSubConversationResponseOk
   deriving stock (Eq, Show, Generic)
   deriving (ToJSON, FromJSON) via (CustomEncoded LeaveSubConversationResponse)
+
+data DeleteSubConversationRequest = DeleteSubConversationRequest
+  { dscreqUser :: UserId,
+    dscreqConv :: ConvId,
+    dscreqSubConv :: SubConvId,
+    dscreqGroupId :: GroupId,
+    dscreqEpoch :: Epoch
+  }
+  deriving stock (Eq, Show, Generic)
+  deriving (ToJSON, FromJSON) via (CustomEncoded DeleteSubConversationRequest)
+
+data DeleteSubConversationResponse
+  = DeleteSubConversationResponseError GalleyError
+  | DeleteSubConversationResponseSuccess
+  deriving stock (Eq, Show, Generic)
+  deriving (ToJSON, FromJSON) via (CustomEncoded DeleteSubConversationResponse)
+

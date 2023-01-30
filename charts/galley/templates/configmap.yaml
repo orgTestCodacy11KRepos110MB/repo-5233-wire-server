@@ -69,6 +69,9 @@ data:
           ed25519: "/etc/wire/galley/secrets/removal_ed25519.pem"
         {{- end }}
       {{- end -}}
+      {{- if .settings.disabledAPIVersions }}
+      disabledAPIVersions: {{ .settings.disabledAPIVersions }}
+      {{- end }}
       {{- if .settings.featureFlags }}
       featureFlags:
         sso: {{ .settings.featureFlags.sso }}
@@ -107,10 +110,6 @@ data:
         {{- if .settings.featureFlags.conversationGuestLinks }}
         conversationGuestLinks:
           {{- toYaml .settings.featureFlags.conversationGuestLinks | nindent 10 }}
-        {{- end }}
-        {{- if .settings.featureFlags.searchVisibilityInbound }}
-        searchVisibilityInbound:
-          {{- toYaml .settings.featureFlags.searchVisibilityInbound | nindent 10 }}
         {{- end }}
         {{- if .settings.featureFlags.mls }}
         mls:

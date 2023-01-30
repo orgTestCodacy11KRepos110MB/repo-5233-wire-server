@@ -62,6 +62,7 @@ import qualified Galley.Effects.BrigAccess as E
 import qualified Galley.Effects.ConversationStore as E
 import qualified Galley.Effects.FireAndForget as E
 import qualified Galley.Effects.MemberStore as E
+import Galley.Effects.SubConversationSupply
 import Galley.Options
 import Galley.Types.Conversations.Members
 import Galley.Types.UserList (UserList (UserList))
@@ -126,6 +127,7 @@ federationSitemap =
     :<|> Named @"on-typing-indicator-updated" onTypingIndicatorUpdated
     :<|> Named @"get-sub-conversation" getSubConversationForRemoteUser
     :<|> Named @"leave-sub-conversation" (callsFed leaveSubConversation)
+    :<|> Named @"delete-sub-conversation" deleteSubConversationForRemoteUser
 
 onClientRemoved ::
   ( Members
@@ -926,3 +928,31 @@ instance
       runError act >>= \case
         Left _ -> throw (demote @err)
         Right res -> pure res
+
+deleteSubConversationForRemoteUser ::
+  Members
+    '[ ConversationStore,
+       Input (Local ()),
+       Input Env,
+       MemberStore,
+       Resource,
+       SubConversationStore,
+       SubConversationSupply
+     ]
+    r =>
+  Domain ->
+  DeleteSubConversationRequest ->
+  Sem r DeleteSubConversationResponse
+deleteSubConversationForRemoteUser domain DeleteSubConversationRequest {..} =
+  fmap
+    ( either
+        F.DeleteSubConversationResponseError
+        (\() -> F.DeleteSubConversationResponseSuccess)
+    )
+    . runError @GalleyError
+    . mapToGalleyError @MLSDeleteSubConvStaticErrors
+    $ do
+      let qusr = Qualified dscreqUser domain
+          dsc = DeleteSubConversation dscreqGroupId dscreqEpoch
+      lconv <- qualifyLocal dscreqConv
+      deleteLocalSubConversation qusr lconv dscreqSubConv dsc

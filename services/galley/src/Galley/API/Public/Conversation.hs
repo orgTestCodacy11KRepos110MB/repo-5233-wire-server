@@ -33,6 +33,7 @@ conversationAPI :: API ConversationAPI GalleyEffects
 conversationAPI =
   mkNamedAPI @"get-unqualified-conversation" getUnqualifiedConversation
     <@> mkNamedAPI @"get-unqualified-conversation-legalhold-alias" getUnqualifiedConversation
+    <@> mkNamedAPI @"get-conversation@v2" (callsFed getConversation)
     <@> mkNamedAPI @"get-conversation" (callsFed getConversation)
     <@> mkNamedAPI @"get-conversation-roles" getConversationRoles
     <@> mkNamedAPI @"get-group-info" (callsFed getGroupInfo)
@@ -52,7 +53,7 @@ conversationAPI =
     <@> mkNamedAPI @"get-conversation-clients" getMLSClientListForConv
     <@> mkNamedAPI @"get-subconversation" (callsFed getSubConversation)
     <@> mkNamedAPI @"leave-subconversation" (callsFed leaveSubConversation)
-    <@> mkNamedAPI @"delete-subconversation" deleteSubConversation
+    <@> mkNamedAPI @"delete-subconversation" (callsFed deleteSubConversation)
     <@> mkNamedAPI @"get-subconversation-group-info" (callsFed getSubConversationGroupInfo)
     <@> mkNamedAPI @"create-one-to-one-conversation@v2" (callsFed createOne2OneConversation)
     <@> mkNamedAPI @"create-one-to-one-conversation" (callsFed createOne2OneConversation)

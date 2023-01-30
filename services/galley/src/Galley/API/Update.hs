@@ -343,9 +343,9 @@ updateConversationReceiptMode ::
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-new-remote-conversation",
-    CallsFed 'Galley "update-conversation"
+    CallsFed 'Galley "update-conversation",
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local UserId ->
   ConnId ->
@@ -380,7 +380,6 @@ updateRemoteConversation ::
          TinyLog
        ]
       r,
-    Members (HasConversationActionGalleyErrors tag) r,
     RethrowErrors (HasConversationActionGalleyErrors tag) (Error NoChanges : r),
     SingI tag,
     CallsFed 'Galley "update-conversation"
@@ -426,9 +425,9 @@ updateConversationReceiptModeUnqualified ::
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-new-remote-conversation",
-    CallsFed 'Galley "update-conversation"
+    CallsFed 'Galley "update-conversation",
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local UserId ->
   ConnId ->
@@ -452,8 +451,8 @@ updateConversationMessageTimer ::
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local UserId ->
   ConnId ->
@@ -491,8 +490,8 @@ updateConversationMessageTimerUnqualified ::
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local UserId ->
   ConnId ->
@@ -519,8 +518,8 @@ deleteLocalConversation ::
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local UserId ->
   ConnId ->
@@ -1038,8 +1037,8 @@ updateOtherMemberLocalConv ::
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local ConvId ->
   Local UserId ->
@@ -1070,8 +1069,8 @@ updateOtherMemberUnqualified ::
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local UserId ->
   ConnId ->
@@ -1102,8 +1101,8 @@ updateOtherMember ::
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local UserId ->
   ConnId ->
@@ -1474,8 +1473,8 @@ updateConversationName ::
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local UserId ->
   ConnId ->
@@ -1505,8 +1504,8 @@ updateUnqualifiedConversationName ::
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local UserId ->
   ConnId ->
@@ -1532,8 +1531,8 @@ updateLocalConversationName ::
        ]
       r,
     CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-new-remote-conversation"
+    CallsFed 'Galley "on-new-remote-conversation",
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local UserId ->
   ConnId ->

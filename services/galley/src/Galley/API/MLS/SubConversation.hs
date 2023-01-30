@@ -19,6 +19,7 @@ module Galley.API.MLS.SubConversation
   ( getSubConversation,
     getLocalSubConversation,
     deleteSubConversation,
+    deleteLocalSubConversation,
     getSubConversationGroupInfo,
     getSubConversationGroupInfoFromLocalConv,
     leaveSubConversation,
@@ -26,6 +27,7 @@ module Galley.API.MLS.SubConversation
     LeaveSubConversationStaticErrors,
     leaveLocalSubConversation,
     MLSGetSubConvStaticErrors,
+    MLSDeleteSubConvStaticErrors,
   )
 where
 
@@ -50,7 +52,6 @@ import qualified Galley.Effects.SubConversationStore as Eff
 import Galley.Effects.SubConversationSupply (SubConversationSupply)
 import qualified Galley.Effects.SubConversationSupply as Eff
 import Imports
-import qualified Network.Wai.Utilities.Error as Wai
 import Polysemy
 import Polysemy.Error
 import Polysemy.Input
@@ -135,6 +136,7 @@ getLocalSubConversation qusr lconv sconv = do
                   ConversationMLSData
                     { cnvmlsGroupId = groupId,
                       cnvmlsEpoch = epoch,
+                      cnvmlsEpochTimestamp = Nothing,
                       cnvmlsCipherSuite = suite
                     },
                 scMembers = mkClientMap []
@@ -216,32 +218,41 @@ getSubConversationGroupInfoFromLocalConv qusr subConvId lcnvId = do
   Eff.getSubConversationPublicGroupState (tUnqualified lcnvId) subConvId
     >>= noteS @'MLSMissingGroupInfo
 
+type MLSDeleteSubConvStaticErrors =
+  '[ ErrorS 'ConvAccessDenied,
+     ErrorS 'ConvNotFound,
+     ErrorS 'MLSNotEnabled,
+     ErrorS 'MLSStaleMessage
+   ]
+
 deleteSubConversation ::
-  Members
-    '[ ConversationStore,
-       ErrorS 'ConvAccessDenied,
-       ErrorS 'ConvNotFound,
-       ErrorS 'MLSNotEnabled,
-       ErrorS 'MLSStaleMessage,
-       Error Wai.Error,
-       Input Env,
-       MemberStore,
-       Resource,
-       SubConversationStore,
-       SubConversationSupply
-     ]
-    r =>
+  ( Members
+      '[ ConversationStore,
+         ErrorS 'ConvAccessDenied,
+         ErrorS 'ConvNotFound,
+         ErrorS 'MLSNotEnabled,
+         ErrorS 'MLSStaleMessage,
+         Error FederationError,
+         FederatorAccess,
+         Input Env,
+         MemberStore,
+         Resource,
+         SubConversationStore,
+         SubConversationSupply
+       ]
+      r,
+    CallsFed 'Galley "delete-sub-conversation"
+  ) =>
   Local UserId ->
   Qualified ConvId ->
   SubConvId ->
   DeleteSubConversation ->
   Sem r ()
-deleteSubConversation lusr qconv sconv dsc = do
-  assertMLSEnabled
+deleteSubConversation lusr qconv sconv dsc =
   foldQualified
     lusr
-    (\lcnv -> deleteLocalSubConversation lusr lcnv sconv dsc)
-    (\_rcnv -> throw federationNotImplemented)
+    (\lcnv -> deleteLocalSubConversation (tUntagged lusr) lcnv sconv dsc)
+    (\rcnv -> deleteRemoteSubConversation lusr rcnv sconv dsc)
     qconv
 
 deleteLocalSubConversation ::
@@ -249,21 +260,24 @@ deleteLocalSubConversation ::
     '[ ConversationStore,
        ErrorS 'ConvAccessDenied,
        ErrorS 'ConvNotFound,
+       ErrorS 'MLSNotEnabled,
        ErrorS 'MLSStaleMessage,
+       Input Env,
        MemberStore,
        Resource,
        SubConversationStore,
        SubConversationSupply
      ]
     r =>
-  Local UserId ->
+  Qualified UserId ->
   Local ConvId ->
   SubConvId ->
   DeleteSubConversation ->
   Sem r ()
-deleteLocalSubConversation lusr lcnvId scnvId dsc = do
+deleteLocalSubConversation qusr lcnvId scnvId dsc = do
+  assertMLSEnabled
   let cnvId = tUnqualified lcnvId
-  cnv <- getConversationAndCheckMembership (tUntagged lusr) lcnvId
+  cnv <- getConversationAndCheckMembership qusr lcnvId
   cs <- cnvmlsCipherSuite <$> noteS @'ConvNotFound (mlsMetadata cnv)
   withCommitLock (dscGroupId dsc) (dscEpoch dsc) $ do
     sconv <-
@@ -381,3 +395,39 @@ leaveRemoteSubConversation cid rcnv sub = do
     LeaveSubConversationResponseProtocolError e ->
       throw (mlsProtocolError e)
     LeaveSubConversationResponseOk -> pure ()
+
+deleteRemoteSubConversation ::
+  ( Members
+      '[ ErrorS 'ConvAccessDenied,
+         ErrorS 'ConvNotFound,
+         ErrorS 'MLSNotEnabled,
+         ErrorS 'MLSStaleMessage,
+         Error FederationError,
+         FederatorAccess,
+         Input Env
+       ]
+      r,
+    CallsFed 'Galley "delete-sub-conversation"
+  ) =>
+  Local UserId ->
+  Remote ConvId ->
+  SubConvId ->
+  DeleteSubConversation ->
+  Sem r ()
+deleteRemoteSubConversation lusr rcnvId scnvId dsc = do
+  assertMLSEnabled
+  let deleteRequest =
+        DeleteSubConversationRequest
+          { dscreqUser = tUnqualified lusr,
+            dscreqConv = tUnqualified rcnvId,
+            dscreqSubConv = scnvId,
+            dscreqGroupId = dscGroupId dsc,
+            dscreqEpoch = dscEpoch dsc
+          }
+  response <-
+    runFederated
+      rcnvId
+      (fedClient @'Galley @"delete-sub-conversation" deleteRequest)
+  case response of
+    DeleteSubConversationResponseError e -> rethrowErrors @MLSDeleteSubConvStaticErrors e
+    DeleteSubConversationResponseSuccess -> pure ()

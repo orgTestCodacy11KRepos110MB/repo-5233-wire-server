@@ -14,6 +14,7 @@
 --
 -- You should have received a copy of the GNU Affero General Public License along
 -- with this program. If not, see <https://www.gnu.org/licenses/>.
+{-# LANGUAGE StandaloneKindSignatures #-}
 
 module Galley.API.Action
   ( -- * Conversation action types
@@ -50,6 +51,7 @@ import Data.Qualified
 import qualified Data.Set as Set
 import Data.Singletons
 import Data.Time.Clock
+import Debug.Trace (traceM)
 import Galley.API.Error
 import Galley.API.MLS.Removal
 import Galley.API.Util
@@ -91,7 +93,6 @@ import Wire.API.Federation.Error
 import Wire.API.Team.LegalHold
 import Wire.API.Team.Member
 import qualified Wire.API.User as User
-import Debug.Trace (traceM)
 
 data NoChanges = NoChanges
 
@@ -289,14 +290,30 @@ ensureAllowed tag loc action conv origUser = do
             throwS @'InvalidTargetAccess
     _ -> pure ()
 
+type PerformActionCalls :: ConversationActionTag -> Constraint
+type family PerformActionCalls tag where
+  PerformActionCalls 'ConversationAccessDataTag =
+    ( CallsFed 'Galley "on-conversation-updated",
+      CallsFed 'Galley "on-mls-message-sent",
+      CallsFed 'Galley "on-new-remote-conversation"
+    )
+  PerformActionCalls 'ConversationJoinTag =
+    ( CallsFed 'Galley "on-conversation-updated",
+      CallsFed 'Galley "on-mls-message-sent",
+      CallsFed 'Galley "on-new-remote-conversation"
+    )
+  PerformActionCalls 'ConversationLeaveTag =
+    ( CallsFed 'Galley "on-mls-message-sent"
+    )
+  PerformActionCalls tag = ()
+
 -- | Returns additional members that resulted from the action (e.g. ConversationJoin)
 -- and also returns the (possible modified) action that was performed
 performAction ::
   forall tag r.
   ( HasConversationActionEffects tag r,
-    CallsFed 'Galley "on-mls-message-sent",
-    CallsFed 'Galley "on-conversation-updated",
-    CallsFed 'Galley "on-new-remote-conversation"
+    PerformActionCalls tag,
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Sing tag ->
   Qualified UserId ->
@@ -584,9 +601,10 @@ updateLocalConversation ::
       r,
     HasConversationActionEffects tag r,
     SingI tag,
-    CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-new-remote-conversation",
-    CallsFed 'Galley "on-conversation-updated"
+    CallsFed 'Galley "on-conversation-updated",
+    PerformActionCalls tag,
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local ConvId ->
   Qualified UserId ->
@@ -625,9 +643,10 @@ updateLocalConversationUnchecked ::
     Member GundeckAccess r,
     Member (Input UTCTime) r,
     HasConversationActionEffects tag r,
-    CallsFed 'Galley "on-mls-message-sent",
     CallsFed 'Galley "on-new-remote-conversation",
-    CallsFed 'Galley "on-conversation-updated"
+    CallsFed 'Galley "on-conversation-updated",
+    PerformActionCalls tag,
+    CallsFed 'Galley "on-mls-message-sent"
   ) =>
   Local Conversation ->
   Qualified UserId ->
@@ -823,10 +842,11 @@ kickMember ::
     Member (Input Env) r,
     Member MemberStore r,
     Member TinyLog r,
-    CallsFed 'Galley "on-mls-message-sent",
+    CallsFed 'Galley "on-new-remote-conversation",
     CallsFed 'Galley "on-conversation-updated",
     CallsFed 'Galley "on-new-remote-conversation",
-    Member SubConversationStore r
+    Member SubConversationStore r,
+    PerformActionCalls 'ConversationLeaveTag
   ) =>
   Qualified UserId ->
   Local Conversation ->

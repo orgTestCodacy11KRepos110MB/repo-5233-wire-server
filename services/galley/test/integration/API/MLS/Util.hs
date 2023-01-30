@@ -483,16 +483,21 @@ resetGroup cid gid = do
         mlsNewMembers = mempty
       }
 
-createSubConv :: Qualified ConvId -> ClientIdentity -> Text -> MLSTest ()
-createSubConv qcnv creator name = do
-  let subId = SubConvId name
-  sub <-
-    liftTest $
-      responseJsonError
-        =<< getSubConv (ciUser creator) qcnv subId
-          <!! const 200 === statusCode
+createSubConv ::
+  Qualified ConvId ->
+  ClientIdentity ->
+  SubConvId ->
+  MLSTest PublicSubConversation
+createSubConv qcnv creator subId = do
+  let getSC =
+        liftTest $
+          responseJsonError
+            =<< getSubConv (ciUser creator) qcnv subId
+              <!! const 200 === statusCode
+  sub <- getSC
   resetGroup creator (pscGroupId sub)
   void $ createPendingProposalCommit creator >>= sendAndConsumeCommitBundle
+  getSC
 
 -- | Create a local group only without a conversation. This simulates creating
 -- an MLS conversation on a remote backend.
@@ -1005,6 +1010,7 @@ receiveNewRemoteConv conv gid = do
             ( ConversationMLSData
                 gid
                 (Epoch 1)
+                (Just (UTCTime (fromGregorian 2020 8 29) 0))
                 MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519
             )
   void $
@@ -1141,6 +1147,6 @@ deleteSubConv u qcnv sconv dsc = do
       . contentJson
       . json dsc
 
-convsub :: Qualified ConvId -> Maybe Text -> Qualified ConvOrSubConvId
+convsub :: Qualified ConvId -> Maybe SubConvId -> Qualified ConvOrSubConvId
 convsub qcnv Nothing = Conv <$> qcnv
-convsub qcnv (Just subname) = flip SubConv (SubConvId subname) <$> qcnv
+convsub qcnv (Just sconv) = flip SubConv sconv <$> qcnv
