@@ -26,6 +26,7 @@ import Data.Id
 import qualified Data.Map as Map
 import Data.Qualified
 import Data.Time
+import Debug.Trace (traceM)
 import Galley.API.Error
 import Galley.API.MLS.Conversation
 import Galley.API.MLS.Keys (getMLSRemovalKey)
@@ -78,6 +79,7 @@ removeClientsWithClientMap lConvOrSubConv kprefs qusr = do
       warn $ Log.msg ("No backend removal key is configured (See 'mlsPrivateKeyPaths' in galley's config). Not able to remove client from MLS conversation." :: Text)
     Just (secKey, pubKey) -> do
       for_ kprefs $ \kpref -> do
+        traceM $ "\n 3. called kpref removal : " <> show kpref
         let proposal = mkRemoveProposal kpref
             msg = mkSignedMessage secKey pubKey (cnvmlsGroupId meta) (cnvmlsEpoch meta) (ProposalMessage proposal)
             msgEncoded = encodeMLS' msg
@@ -87,6 +89,7 @@ removeClientsWithClientMap lConvOrSubConv kprefs qusr = do
           (proposalRef (cnvmlsCipherSuite meta) proposal)
           ProposalOriginBackend
           proposal
+        traceM $ "\n 4. proposal msg: " <> show msgEncoded
         propagateMessage qusr lConvOrSubConv Nothing msgEncoded
 
 removeClientsWithClientMapRecursively ::
@@ -110,6 +113,7 @@ removeClientsWithClientMapRecursively ::
   Sem r ()
 removeClientsWithClientMapRecursively lMlsConv getKPs qusr = do
   let mainConv = fmap Conv lMlsConv
+  traceM "\n1. remove from parent"
   removeClientsWithClientMap mainConv (getKPs (tUnqualified mainConv)) qusr
 
   -- remove this client from all subconversations
@@ -117,7 +121,9 @@ removeClientsWithClientMapRecursively lMlsConv getKPs qusr = do
   for_ subs $ \sub -> do
     let subConv = fmap (flip SubConv sub) lMlsConv
 
-    -- let kpmap = Map.findWithDefault mempty qusr (scMembers sub)
+    -- let kps = toList $ getKPs (tUnqualified subConv)
+    -- traceM $ "\nsub kps :" <> show kps
+    traceM "\n2. Iterating subconvs"
     removeClientsWithClientMap
       subConv
       (getKPs (tUnqualified subConv))
@@ -148,6 +154,7 @@ removeClient lc qusr cid = do
   mMlsConv <- mkMLSConversation (tUnqualified lc)
   for_ mMlsConv $ \mlsConv -> do
     let getKPs = cmLookupRef (mkClientIdentity qusr cid) . membersConvOrSub
+    traceM "\nremove client called"
     removeClientsWithClientMapRecursively (qualifyAs lc mlsConv) getKPs qusr
 
 -- | Send remove proposals for all clients of the user to the local conversation.
@@ -174,6 +181,7 @@ removeUser lc qusr = do
   mMlsConv <- mkMLSConversation (tUnqualified lc)
   for_ mMlsConv $ \mlsConv -> do
     let getKPs = Map.findWithDefault mempty qusr . membersConvOrSub
+    traceM "\nremove user called"
     removeClientsWithClientMapRecursively (qualifyAs lc mlsConv) getKPs qusr
 
 listSubConversations ::

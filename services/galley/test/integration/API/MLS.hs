@@ -2741,17 +2741,27 @@ testCreatorRemovesUserFromParent = do
         let qcs = convsub qcnv (Just subname)
 
         -- all clients join
-        for_ [bob1, bob2, charlie1, charlie2] $ \c ->
+        for_ [bob1, bob2, charlie1, charlie2] $ \c -> do
           void $ createExternalCommit c Nothing qcs >>= sendAndConsumeCommitBundle
 
-      -- creator alice kicks bob out
-      mlsBracket [charlie1, charlie2] $ \wss -> do
-        events <- createRemoveCommit alice1 [bob1, bob2] >>= sendAndConsumeCommitBundle
-        liftIO $ assertOne events >>= assertLeaveEvent qcnv alice [bob]
+      traceM $ "\ntest: remove commit for bob1 and bob2"
+      events <- createRemoveCommit alice1 [bob1, bob2] >>= sendAndConsumeCommitBundle
+      liftIO $ assertOne events >>= assertLeaveEvent qcnv alice [bob]
 
-        withMLSState subConvState $ do
-          WS.assertMatchN_ (5 # Second) wss $ \n ->
+      withMLSState subConvState $ do
+        mlsBracket [charlie1, charlie2] $ \wss2 -> do
+          [(_, kpref1)] <- getClientsFromGroupState alice1 alice
+
+          WS.assertMatchN_ (5 # Second) wss2 $ \n ->
             wsAssertMemberLeave qcnv alice [bob] n
+
+          msg <- WS.assertMatchN (5 # Second) wss2 $ \n -> do
+            traceM $ "\n weeee " <> show n
+            wsAssertBackendRemoveProposal alice qcnv kpref1 n
+
+          traceM $ "\n -- --- : " <> show msg
+
+      -- traverse_ (uncurry consumeMessage1) (zip [charlie1, charlie2] msg)
 
       liftTest $ do
         getSubConv (qUnqualified bob) qcnv (SubConvId "conference")
